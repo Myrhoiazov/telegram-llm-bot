@@ -36,6 +36,10 @@ class TelegramClient:
         payload = {"chat_id": chat_id, "text": text}
         self._call("sendMessage", json_body=payload, timeout=self._request_timeout_seconds)
 
+    def send_chat_action(self, chat_id: int, action: str = "typing") -> None:
+        payload = {"chat_id": chat_id, "action": action}
+        self._call("sendChatAction", json_body=payload, timeout=self._request_timeout_seconds)
+
     def _call(self, method: str, timeout: int, params=None, json_body=None) -> dict:
         url = f"{self._base_url}/{method}"
         try:

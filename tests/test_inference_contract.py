@@ -44,6 +44,24 @@ class _FakeSession:
         return self._response
 
 
+def test_ollama_provider_generate_includes_system_prompt_when_given():
+    session = _FakeSession(response=_FakeResponse(json_data={"response": "hi"}))
+    provider = OllamaProvider("http://ollama:11434", "qwen3:1.7b", 30, session=session)
+
+    provider.generate("hi", system="Отвечай только фактами.")
+
+    assert session.last_call["json"]["system"] == "Отвечай только фактами."
+
+
+def test_ollama_provider_generate_omits_system_when_not_given():
+    session = _FakeSession(response=_FakeResponse(json_data={"response": "hi"}))
+    provider = OllamaProvider("http://ollama:11434", "qwen3:1.7b", 30, session=session)
+
+    provider.generate("hi")
+
+    assert "system" not in session.last_call["json"]
+
+
 def test_ollama_provider_generate_returns_stripped_text():
     session = _FakeSession(response=_FakeResponse(json_data={"response": "  hello world  "}))
     provider = OllamaProvider("http://ollama:11434", "qwen3:1.7b", 30, session=session)

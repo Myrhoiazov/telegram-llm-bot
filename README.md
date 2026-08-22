@@ -27,29 +27,34 @@ This keeps the code easy to study and easy to extend later. Telegram integration
 - Long polling with `getUpdates`.
 - Replies with `sendMessage`.
 - In-memory Telegram update offset during process runtime.
-- Stateless LLM calls through a `generate(prompt) -> str` contract.
+- Stateless LLM calls through a `generate(prompt, system=None) -> str` contract.
 - Ollama HTTP provider using `/api/generate`.
 - Docker Compose with `telegram-bot` and `ollama` services.
 - Environment-based configuration.
 - Non-root bot container.
 - Basic logging, error handling, and tests.
+- Native Telegram "typing..." indicator while waiting for a reply.
+- Optional `chat_id` allowlist to reject messages from any chat other than the configured one.
+- A factual system prompt instructing the model to say "I don't know" instead of guessing.
 
 ## Project Layout
 
 ```text
 app/
-  main.py                    # entry point and dependency wiring
+  main.py                    # entry point, dependency wiring, polling loop, chat_id allowlist
   config.py                  # environment parsing and validation
   telegram/
-    client.py                # Telegram HTTP API client
+    client.py                # Telegram HTTP API client (getUpdates, sendMessage, sendChatAction)
     updates.py               # update parsing and offset handling
+    typing_indicator.py      # background "typing..." chat action while waiting for a reply
   application/
     bot_service.py           # message handling use case
-    responder.py             # stateless responder abstraction
+    responder.py             # stateless responder abstraction + factual SYSTEM_PROMPT
   inference/
     base.py                  # TextGenerator contract
     ollama.py                # Ollama provider
 tests/                       # pytest test suite
+docs/specs/                  # dated spec addenda on top of Spec.md
 docker-compose.yml
 Dockerfile
 .env.example
@@ -79,9 +84,17 @@ OLLAMA_MODEL=qwen3:1.7b
 POLL_TIMEOUT_SECONDS=30
 REQUEST_TIMEOUT_SECONDS=60
 LOG_LEVEL=INFO
+ALLOWED_CHAT_ID=
+TYPING_ACTION_INTERVAL_SECONDS=4
 ```
 
 `docker-compose.yml` sets `OLLAMA_BASE_URL` to `http://ollama:11434` for the bot container.
+
+`ALLOWED_CHAT_ID` restricts the bot to a single Telegram chat. Leave it empty during development (the bot
+will reply to any chat and log a warning); set it to your chat's numeric id in production so messages from
+any other chat get a short "Доступ ограничен." reply instead of reaching the LLM. `TYPING_ACTION_INTERVAL_SECONDS`
+controls how often the bot re-sends the Telegram "typing..." status while waiting for a reply (must stay
+below Telegram's ~5 second status TTL).
 
 Never commit a real Telegram token.
 
@@ -196,4 +209,4 @@ Telegram layer -> BotService -> Responder -> TextGenerator -> OllamaProvider
 
 A future vLLM provider or separate Agent Service should implement the same text generation boundary while keeping Telegram polling and message handling unchanged.
 
-Before adding larger systems such as MCP, RAG, memory, tools, or cloud deployment, read the project notes in `AGENTS.md`, `CLAUDE.md`, `Prompt.md`, and `Spec.md`.
+Before adding larger systems such as MCP, RAG, memory, tools, or cloud deployment, read the project notes in `AGENTS.md`, `CLAUDE.md`, `Prompt.md`, and `Spec.md`. Feature-level additions on top of `Spec.md` (typing indicator, chat allowlist, factual system prompt) are documented in `docs/specs/2026-08-22-interactive-hardening.md`.

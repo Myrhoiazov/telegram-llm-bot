@@ -11,6 +11,8 @@ def test_load_config_with_all_variables_set():
         "POLL_TIMEOUT_SECONDS": "20",
         "REQUEST_TIMEOUT_SECONDS": "45",
         "LOG_LEVEL": "debug",
+        "ALLOWED_CHAT_ID": "555",
+        "TYPING_ACTION_INTERVAL_SECONDS": "3",
     }
 
     config = load_config(env)
@@ -22,6 +24,8 @@ def test_load_config_with_all_variables_set():
         poll_timeout_seconds=20,
         request_timeout_seconds=45,
         log_level="DEBUG",
+        allowed_chat_id=555,
+        typing_action_interval_seconds=3,
     )
 
 
@@ -35,6 +39,15 @@ def test_load_config_applies_defaults_when_optional_vars_missing():
     assert config.poll_timeout_seconds == 30
     assert config.request_timeout_seconds == 60
     assert config.log_level == "INFO"
+    assert config.allowed_chat_id is None
+    assert config.typing_action_interval_seconds == 4
+
+
+def test_load_config_allowed_chat_id_invalid_raises():
+    env = {"TELEGRAM_BOT_TOKEN": "test-token", "ALLOWED_CHAT_ID": "not-a-number"}
+
+    with pytest.raises(ConfigError):
+        load_config(env)
 
 
 def test_load_config_strips_trailing_slash_from_base_url():

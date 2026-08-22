@@ -23,8 +23,10 @@ class OllamaProvider:
         self._timeout_seconds = timeout_seconds
         self._session = session or requests.Session()
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, system: str | None = None) -> str:
         payload = {"model": self._model, "prompt": prompt, "stream": False}
+        if system:
+            payload["system"] = system
         try:
             response = self._session.post(self._url, json=payload, timeout=self._timeout_seconds)
         except requests.RequestException as exc:

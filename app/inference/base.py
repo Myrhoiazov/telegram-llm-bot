@@ -5,7 +5,7 @@ from typing import Protocol
 
 
 class TextGenerator(Protocol):
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, system: str | None = None) -> str:
         ...
 
 

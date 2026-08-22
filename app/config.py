@@ -1,8 +1,11 @@
 """Environment-based configuration for the bot."""
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigError(Exception):
@@ -17,6 +20,8 @@ class Config:
     poll_timeout_seconds: int
     request_timeout_seconds: int
     log_level: str
+    allowed_chat_id: int | None
+    typing_action_interval_seconds: int
 
 
 _DEFAULTS = {
@@ -25,6 +30,7 @@ _DEFAULTS = {
     "POLL_TIMEOUT_SECONDS": "30",
     "REQUEST_TIMEOUT_SECONDS": "60",
     "LOG_LEVEL": "INFO",
+    "TYPING_ACTION_INTERVAL_SECONDS": "4",
 }
 
 
@@ -52,6 +58,11 @@ def load_config(env: dict[str, str] | None = None) -> Config:
 
     log_level = (source.get("LOG_LEVEL", _DEFAULTS["LOG_LEVEL"]).strip() or "INFO").upper()
 
+    allowed_chat_id = _parse_allowed_chat_id(source)
+    typing_action_interval_seconds = _parse_positive_int(
+        source, "TYPING_ACTION_INTERVAL_SECONDS", _DEFAULTS["TYPING_ACTION_INTERVAL_SECONDS"]
+    )
+
     return Config(
         telegram_bot_token=token,
         ollama_base_url=ollama_base_url.rstrip("/"),
@@ -59,7 +70,22 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         poll_timeout_seconds=poll_timeout_seconds,
         request_timeout_seconds=request_timeout_seconds,
         log_level=log_level,
+        allowed_chat_id=allowed_chat_id,
+        typing_action_interval_seconds=typing_action_interval_seconds,
     )
+
+
+def _parse_allowed_chat_id(source: dict[str, str]) -> int | None:
+    raw = source.get("ALLOWED_CHAT_ID", "").strip()
+    if not raw:
+        logger.warning(
+            "ALLOWED_CHAT_ID is not set: the bot will reply to messages from any chat"
+        )
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ConfigError(f"ALLOWED_CHAT_ID must be an integer, got {raw!r}") from exc
 
 
 def _parse_positive_int(source: dict[str, str], key: str, default: str) -> int:

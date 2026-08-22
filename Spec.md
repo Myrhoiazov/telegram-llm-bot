@@ -387,3 +387,20 @@ The initial implementation must keep the application boundary stable so Telegram
 - The project can run locally with Docker Compose after `.env` is populated.
 - The end-to-end flow works: `User Message -> Ollama -> Telegram Reply`.
 - The code remains readable, small, and suitable for learning Python.
+
+## 16. Interactive Hardening (Addendum)
+
+The bot was extended with three additions on top of the boundaries in this spec, detailed in
+`docs/specs/2026-08-22-interactive-hardening.md`:
+
+- A native Telegram "typing..." chat action is kept alive (re-sent on an interval) while waiting for the
+  Ollama reply, via `app/telegram/typing_indicator.py`. This lives in the Telegram adapter layer, not in
+  `app/application/**`.
+- An optional `ALLOWED_CHAT_ID` allowlist rejects messages from any other chat with a short reply, without
+  calling the inference provider. The check lives in `app/main.py`'s polling loop, not in `BotService`.
+- `TextGenerator.generate` gained an optional `system: str | None = None` parameter. `LLMResponder` passes a
+  fixed, Russian, facts-only `SYSTEM_PROMPT` (`app/application/responder.py`) that instructs the model to
+  say it does not know rather than guess. `OllamaProvider` forwards it as Ollama's native `system` field.
+
+These additions do not change the stateless, single-message contract in §6, and do not add any new runtime
+component beyond `telegram-bot` and `ollama` (`CLAUDE.md`).
