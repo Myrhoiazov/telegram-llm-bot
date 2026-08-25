@@ -12,6 +12,15 @@ def make_config(allowed_chat_id):
         log_level="INFO",
         allowed_chat_id=allowed_chat_id,
         typing_action_interval_seconds=0.01,
+        agent_max_steps=8,
+        max_context_messages=30,
+        exec_timeout_seconds=20,
+        exec_workspace_dir="/app/workspace",
+        memory_db_path="/app/data/memory.sqlite3",
+        email_imap_host="",
+        email_imap_port=993,
+        email_address="",
+        email_app_password="",
     )
 
 

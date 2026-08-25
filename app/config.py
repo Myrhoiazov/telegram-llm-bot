@@ -22,6 +22,15 @@ class Config:
     log_level: str
     allowed_chat_id: int | None
     typing_action_interval_seconds: int
+    agent_max_steps: int
+    max_context_messages: int
+    exec_timeout_seconds: int
+    exec_workspace_dir: str
+    memory_db_path: str
+    email_imap_host: str
+    email_imap_port: int
+    email_address: str
+    email_app_password: str
 
 
 _DEFAULTS = {
@@ -31,6 +40,12 @@ _DEFAULTS = {
     "REQUEST_TIMEOUT_SECONDS": "60",
     "LOG_LEVEL": "INFO",
     "TYPING_ACTION_INTERVAL_SECONDS": "4",
+    "AGENT_MAX_STEPS": "8",
+    "MAX_CONTEXT_MESSAGES": "30",
+    "EXEC_TIMEOUT_SECONDS": "20",
+    "EXEC_WORKSPACE_DIR": "/app/workspace",
+    "MEMORY_DB_PATH": "/app/data/memory.sqlite3",
+    "EMAIL_IMAP_PORT": "993",
 }
 
 
@@ -63,6 +78,20 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         source, "TYPING_ACTION_INTERVAL_SECONDS", _DEFAULTS["TYPING_ACTION_INTERVAL_SECONDS"]
     )
 
+    agent_max_steps = _parse_positive_int(source, "AGENT_MAX_STEPS", _DEFAULTS["AGENT_MAX_STEPS"])
+    max_context_messages = _parse_positive_int(
+        source, "MAX_CONTEXT_MESSAGES", _DEFAULTS["MAX_CONTEXT_MESSAGES"]
+    )
+    exec_timeout_seconds = _parse_positive_int(
+        source, "EXEC_TIMEOUT_SECONDS", _DEFAULTS["EXEC_TIMEOUT_SECONDS"]
+    )
+    exec_workspace_dir = source.get("EXEC_WORKSPACE_DIR", _DEFAULTS["EXEC_WORKSPACE_DIR"]).strip()
+    memory_db_path = source.get("MEMORY_DB_PATH", _DEFAULTS["MEMORY_DB_PATH"]).strip()
+    email_imap_host = source.get("EMAIL_IMAP_HOST", "").strip()
+    email_imap_port = _parse_positive_int(source, "EMAIL_IMAP_PORT", _DEFAULTS["EMAIL_IMAP_PORT"])
+    email_address = source.get("EMAIL_ADDRESS", "").strip()
+    email_app_password = source.get("EMAIL_APP_PASSWORD", "").strip()
+
     return Config(
         telegram_bot_token=token,
         ollama_base_url=ollama_base_url.rstrip("/"),
@@ -72,6 +101,15 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         log_level=log_level,
         allowed_chat_id=allowed_chat_id,
         typing_action_interval_seconds=typing_action_interval_seconds,
+        agent_max_steps=agent_max_steps,
+        max_context_messages=max_context_messages,
+        exec_timeout_seconds=exec_timeout_seconds,
+        exec_workspace_dir=exec_workspace_dir,
+        memory_db_path=memory_db_path,
+        email_imap_host=email_imap_host,
+        email_imap_port=email_imap_port,
+        email_address=email_address,
+        email_app_password=email_app_password,
     )
 
 
