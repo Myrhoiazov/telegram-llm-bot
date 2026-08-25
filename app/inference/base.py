@@ -1,12 +1,5 @@
-"""Minimal, provider-agnostic text generation contract."""
+"""Shared inference error type."""
 from __future__ import annotations
-
-from typing import Protocol
-
-
-class TextGenerator(Protocol):
-    def generate(self, prompt: str, system: str | None = None) -> str:
-        ...
 
 
 class InferenceError(Exception):
