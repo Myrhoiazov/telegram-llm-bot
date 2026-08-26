@@ -6,15 +6,17 @@ REDACTED = "***"
 
 def redact_text(text: str, secrets: list[str]) -> str:
     redacted = text
-    for secret in secrets:
+    # Sort by descending length to avoid substring collisions:
+    # if "abc" and "abc123xyz" are both secrets, we must replace the longer one first,
+    # otherwise replacing "abc" would mutate the text and make "abc123xyz" no longer matchable.
+    sorted_secrets = sorted(secrets, key=len, reverse=True)
+    for secret in sorted_secrets:
         if secret:
             redacted = redacted.replace(secret, REDACTED)
     return redacted
 
 
 def redact_payload(payload: dict, secrets: list[str]) -> dict:
-    if not secrets:
-        return payload
     return {key: _redact_value(value, secrets) for key, value in payload.items()}
 
 
