@@ -7,7 +7,7 @@
 Перед реализацией прочитай связанные документы:
 
 - `README.md` - карта документации и порядок чтения;
-- `Spec.md` - техническая спецификация и source of truth;
+- `docs/specifications/Spec.md` - техническая спецификация и source of truth;
 - `AGENTS.md` - будущие Agent/Harness границы, без реализации сейчас;
 - `CLAUDE.md` - будущий cloud/deployment path, без реализации сейчас.
 

@@ -4,11 +4,15 @@
 
 Этот файл описывает возможный cloud/deployment path для Telegram AI Bot. Он не является требованием к текущей локальной реализации.
 
-Сейчас проект должен запускаться локально через Docker Compose:
+Сейчас проект должен запускаться локально: `telegram-bot` в Docker Compose, `ollama` — нативным процессом на хосте (macOS, `Ollama.app`/CLI):
 
 ```text
-telegram-bot + ollama
+telegram-bot (Docker Compose) + ollama (native host process)
 ```
+
+Причина: на macOS Docker Desktop не пробрасывает GPU/Metal в Linux-контейнеры, поэтому Ollama
+в контейнере работает только на CPU и не укладывается в разумные тайминги даже для лёгких
+моделей при загруженном хосте. Нативный `ollama serve` на macOS использует Metal-ускорение.
 
 Не нужно добавлять cloud infrastructure, Kubernetes, managed databases, vector databases, queues или отдельные agent services в первую реализацию.
 
@@ -17,13 +21,11 @@ telegram-bot + ollama
 Текущая цель:
 
 ```text
-Developer machine
+Developer machine (macOS)
       |
-      v
-Docker Compose
+      +--> Docker Compose --> telegram-bot
       |
-      +--> telegram-bot
-      +--> ollama
+      +--> native process   --> ollama (Metal-accelerated)
 ```
 
 Требования:
@@ -34,8 +36,8 @@ Docker Compose
 - no host root mount;
 - no `~/.ssh` mount;
 - secrets only through environment variables;
-- Ollama runs as an independent process/container;
-- Telegram bot calls Ollama through `http://ollama:11434`.
+- Ollama runs as an independent process on the host (not a container, on macOS — for Metal GPU access);
+- Telegram bot calls Ollama through `http://host.docker.internal:11434`.
 
 ## Configuration and secrets
 
@@ -45,10 +47,10 @@ Use environment variables:
 
 ```text
 TELEGRAM_BOT_TOKEN=replace_me
-OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=qwen3:1.7b
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=qwen3:4b
 POLL_TIMEOUT_SECONDS=30
-REQUEST_TIMEOUT_SECONDS=60
+REQUEST_TIMEOUT_SECONDS=180
 LOG_LEVEL=INFO
 ```
 
@@ -115,11 +117,14 @@ Add each component only when there is a concrete need.
 
 Current:
 
-- Ollama in Docker Compose.
+- Ollama as a native host process on macOS (Metal-accelerated), reached from the
+  `telegram-bot` container via `http://host.docker.internal:11434`. Not run in Docker
+  Compose: Docker Desktop on macOS does not pass through GPU/Metal to Linux containers,
+  which made CPU-only inference in a container too slow to be usable.
 
 Later:
 
-- Ollama on a GPU machine;
+- Ollama on a dedicated GPU machine (Linux, real GPU passthrough);
 - vLLM on a GPU machine;
 - managed model endpoint;
 - separate inference network boundary.
@@ -128,10 +133,10 @@ The application/core should not depend on which option is used. It should depend
 
 ## Network model
 
-Current local Compose network:
+Current local network:
 
 ```text
-telegram-bot -> ollama:11434
+telegram-bot (in Docker Compose) -> host.docker.internal:11434 -> ollama (native host process)
 telegram-bot -> Telegram Bot API
 ```
 
@@ -162,7 +167,8 @@ Do not log raw secrets or sensitive payloads.
 ## Cloud non-goals for current implementation
 
 `tool execution`, `agent loop`, and `memory` are no longer non-goals: they are implemented locally,
-in-process (`app/agent/`, `app/tools/`, `app/memory/`), which is what `spec2.md` asked for. The rest of the
+in-process (`app/agent/`, `app/tools/`, `app/memory/`), which is what `docs/specifications/spec2.md` asked
+for. The rest of the
 list still applies. Do not implement now:
 
 - Kubernetes;
@@ -190,7 +196,12 @@ For the current bot:
 - keep secrets in env;
 - keep local inference separate from the bot process;
 - keep code portable enough to move from local Docker Compose to a VM or container runtime later;
-- document cloud evolution without implementing cloud infrastructure.
+- document cloud evolution without implementing cloud infrastructure;
+- after changing anything under `app/`, `skills/`, or the `Dockerfile`, rebuild the image before
+  redeploying: `docker compose up -d --build telegram-bot` (or `docker compose build` first). Recreating the
+  container alone — `docker compose up -d --force-recreate` without `--build` — reuses the last built image
+  and silently keeps running old code; this has already caused a real incident where the bot ran a stale
+  image for 5 days across several unrelated `.env` changes.
 
 ## `execute_command` runs in-process, not in a sandbox container
 

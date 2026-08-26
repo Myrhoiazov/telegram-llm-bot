@@ -1,7 +1,8 @@
 # Single-process agent loop; ManBot's multi-process shape deferred to a separate repo
 
 The bot is evolving from a stateless one-shot responder into a minimal autonomous agent (harness + `exec`
-tool + SQLite memory) for the spec2.md homework. `PROJECT_UNDERSTANDING_RU.md` documents ManBot, a
+tool + SQLite memory) for the `docs/specifications/spec2.md` homework.
+`docs/specifications/PROJECT_UNDERSTANDING_RU.md` documents ManBot, a
 multi-process, JSONL-message-passing architecture (separate Orchestrator/Planner/Executor/Services
 processes) as an aspirational reference. We deliberately do not adopt that shape here: the harness stays
 one Python process with internal module boundaries (`app/agent/`, `app/tools/`, `app/memory/`) that could

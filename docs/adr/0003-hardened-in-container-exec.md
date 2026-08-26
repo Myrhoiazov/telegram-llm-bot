@@ -7,7 +7,8 @@ API/SDK a headless bot process could call per tool-call. A genuine sandbox would
 "exec-runner" sidecar service holding the Docker socket (only it, not the bot container) that spins up
 short-lived `--rm --network none` containers per `exec` call. That is a real architectural option, but it
 adds a new `docker-compose.yml` service and contradicts the current `CLAUDE.md`, which lists a sandbox
-worker pool as an explicit non-goal — and it's more than a "minimal agent" (`spec2.md`'s own framing) needs.
+worker pool as an explicit non-goal — and it's more than a "minimal agent"
+(`docs/specifications/spec2.md`'s own framing) needs.
 
 Decision: for now, `exec` runs as a subprocess inside the bot's own container — already non-root,
 non-privileged, no host mounts — with added hardening: a fixed non-source workspace `cwd`, a per-call

@@ -1,6 +1,6 @@
 # One tool (`exec`) via native Ollama tool-calling; skills self-loaded through it
 
-`spec2.md` requires one universal tool. We considered hand-rolling a text-based ReAct-style protocol
+`docs/specifications/spec2.md` requires one universal tool. We considered hand-rolling a text-based ReAct-style protocol
 (model emits `ACTION: ...` text the harness parses) versus using Ollama's native tool-calling. `ollama show
 qwen3:1.7b` confirms the model advertises a `tools` capability, so the harness sends `exec` as a real
 function-calling tool via `/api/chat` and reads back structured `tool_calls`, instead of parsing free-form

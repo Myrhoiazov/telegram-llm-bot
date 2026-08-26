@@ -50,12 +50,14 @@ polling.
 - Native Ollama tool-calling over `/api/chat`, not free-form text parsing.
 - One universal tool, `execute_command`, that runs a shell command inside the bot's own container with a
   timeout, truncated output, a fixed workspace `cwd`, and a restricted environment allowlist.
-- Skill files under `skills/` (Markdown, Type A single-CLI and Type B multi-step) that the model discovers
-  and reads itself via `execute_command` (`ls skills/`, `cat skills/<name>.md`) rather than a dedicated tool.
+- Skill files under `skills/<name>/SKILL.md` (Markdown, Type A single-CLI and Type B multi-step), one folder
+  per skill, that the model discovers and reads itself via `execute_command` (`ls skills/`,
+  `cat skills/<name>/SKILL.md`) rather than a dedicated tool.
 - SQLite-backed conversation memory, one active conversation per chat, trimmed to the last
   `MAX_CONTEXT_MESSAGES` messages sent to the model.
 - `/new` command to start a fresh conversation for a chat without deleting prior history.
-- Docker Compose with `telegram-bot` and `ollama` services.
+- Docker Compose for `telegram-bot`; `ollama` runs as a native host process, not a Compose service (see
+  `CLAUDE.md` for why).
 - Environment-based configuration.
 - Non-root bot container.
 - Basic logging, error handling, and tests.
@@ -85,9 +87,10 @@ app/
   inference/
     base.py                  # InferenceError, shared inference contract
     ollama_chat.py            # OllamaChatClient, native /api/chat tool-calling
-skills/                        # Markdown skill files the model reads via execute_command
+skills/<name>/SKILL.md         # one folder per skill; the model reads it via execute_command
 tests/                        # pytest test suite
 docs/adr/                      # architecture decision records for the agent harness
+docs/specifications/           # Spec.md, spec2.md, PROJECT_UNDERSTANDING_RU.md, PROCESS_DIAGRAMS_RU.md
 docs/specs/                    # dated spec addenda on top of Spec.md
 docker-compose.yml
 Dockerfile
@@ -96,7 +99,9 @@ Dockerfile
 
 ## Requirements
 
-- Docker and Docker Compose.
+- Docker and Docker Compose (runs `telegram-bot`).
+- Ollama installed and running natively on the host — e.g. `Ollama.app` on macOS (Metal-accelerated) — not
+  inside Docker Compose. See `CLAUDE.md` for why.
 - Telegram bot token from BotFather.
 - Enough disk space for the selected Ollama model.
 
@@ -114,9 +119,9 @@ Set the required values:
 
 ```text
 TELEGRAM_BOT_TOKEN=123456:your-telegram-bot-token
-OLLAMA_MODEL=qwen3:1.7b
+OLLAMA_MODEL=qwen3:4b
 POLL_TIMEOUT_SECONDS=30
-REQUEST_TIMEOUT_SECONDS=60
+REQUEST_TIMEOUT_SECONDS=180
 LOG_LEVEL=INFO
 ALLOWED_CHAT_ID=
 TYPING_ACTION_INTERVAL_SECONDS=4
@@ -129,7 +134,8 @@ EMAIL_ADDRESS=
 EMAIL_APP_PASSWORD=
 ```
 
-`docker-compose.yml` sets `OLLAMA_BASE_URL` to `http://ollama:11434` for the bot container.
+`docker-compose.yml` defaults `OLLAMA_BASE_URL` to `http://host.docker.internal:11434` (overridable via
+`.env`), since Ollama runs natively on the host rather than as a Compose service — see `CLAUDE.md`.
 
 `ALLOWED_CHAT_ID` restricts the bot to a single Telegram chat. Leave it empty during development (the bot
 will reply to any chat and log a warning); set it to your chat's numeric id in production so messages from
@@ -158,22 +164,23 @@ Never commit a real Telegram token.
 
 ## Quick Start
 
-Start the services:
+Make sure Ollama is running natively on the host — start `Ollama.app` on macOS, or run `ollama serve` — then
+pull the configured model:
 
 ```bash
-docker compose up -d --build
-```
-
-Pull the configured model into the Ollama volume:
-
-```bash
-docker compose exec ollama ollama pull qwen3:1.7b
+ollama pull qwen3:4b
 ```
 
 Check that the model is installed:
 
 ```bash
-docker compose exec ollama ollama list
+ollama list
+```
+
+Start the bot:
+
+```bash
+docker compose up -d --build
 ```
 
 Watch the bot logs:
@@ -224,30 +231,32 @@ docker compose logs --tail=100 telegram-bot
 
 ### Bot replies with a local model error message
 
-The Telegram side is working, but inference failed. Check Ollama logs and installed models:
+The Telegram side is working, but inference failed. Ollama runs natively on the host, not in Docker, so
+check it there instead of `docker compose logs`:
 
 ```bash
-docker compose logs --tail=100 ollama
-docker compose exec ollama ollama list
+ollama list
+ps aux | grep "[O]llama"
 ```
 
 If the configured model is missing, pull it:
 
 ```bash
-docker compose exec ollama ollama pull qwen3:1.7b
+ollama pull qwen3:4b
 ```
 
-If `.env` uses a different `OLLAMA_MODEL`, pull that exact model name.
+If `.env` uses a different `OLLAMA_MODEL`, pull that exact model name. If `ollama list` itself fails to
+connect, Ollama is not running — start `Ollama.app` (macOS) or run `ollama serve`.
 
 ### Ollama returns 404 for `/api/chat`
 
-Most often this means the requested model is not installed in the current Docker volume:
+Most often this means the requested model is not pulled into the native Ollama installation:
 
 ```text
-{"error":"model 'qwen3:1.7b' not found"}
+{"error":"model 'qwen3:4b' not found"}
 ```
 
-Install the model with `ollama pull` inside the `ollama` service.
+Install it with `ollama pull <model-name>` on the host.
 
 ## Security Notes
 
@@ -279,9 +288,10 @@ step was deferred rather than built now.
 Any further multi-process, ManBot-style evolution (separate Orchestrator/Planner/Executor/Services
 processes, JSONL message passing) is intentionally out of scope for this repository and would happen in a
 separate future repository instead — see `docs/adr/0001-single-process-agent-loop.md` and
-`PROJECT_UNDERSTANDING_RU.md` for that vocabulary, used here as inspiration only, not a target shape.
+`docs/specifications/PROJECT_UNDERSTANDING_RU.md` for that vocabulary, used here as inspiration only, not a
+target shape.
 
 Before adding larger systems such as MCP, RAG, additional memory backends, or cloud deployment, read the
-project notes in `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`, `Prompt.md`, `Spec.md`, and `spec2.md`. Feature-level
-additions on top of `Spec.md` (typing indicator, chat allowlist, factual system prompt) are documented in
-`docs/specs/2026-08-22-interactive-hardening.md`.
+project notes in `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`, `Prompt.md`, and `docs/specifications/` (`Spec.md`,
+`spec2.md`). Feature-level additions on top of `Spec.md` (typing indicator, chat allowlist, factual system
+prompt) are documented in `docs/specs/2026-08-22-interactive-hardening.md`.
