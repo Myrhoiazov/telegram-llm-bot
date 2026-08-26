@@ -1,25 +1,21 @@
-from app.application.bot_service import FALLBACK_REPLY, BotService
-from app.inference.base import InferenceError
+from app.application.bot_service import BotService
 
 
-class FakeResponder:
-    def __init__(self, reply=None, error=None):
+class FakeAgent:
+    def __init__(self, reply="ok"):
         self._reply = reply
-        self._error = error
+        self.calls = []
 
-    def respond(self, text: str) -> str:
-        if self._error is not None:
-            raise self._error
+    def handle_message(self, chat_id, text):
+        self.calls.append((chat_id, text))
         return self._reply
 
 
-def test_handle_message_returns_responder_reply():
-    service = BotService(FakeResponder(reply="hello back"))
+def test_handle_message_delegates_to_agent_with_chat_id_and_text():
+    agent = FakeAgent(reply="hello back")
+    service = BotService(agent)
 
-    assert service.handle_message("hi") == "hello back"
+    result = service.handle_message(chat_id=555, text="hi")
 
-
-def test_handle_message_returns_fallback_on_inference_error():
-    service = BotService(FakeResponder(error=InferenceError("boom")))
-
-    assert service.handle_message("hi") == FALLBACK_REPLY
+    assert result == "hello back"
+    assert agent.calls == [(555, "hi")]

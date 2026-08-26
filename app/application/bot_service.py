@@ -1,26 +1,10 @@
-"""Main use case: turn one incoming user message into one reply."""
+"""Main use case: turn one incoming user message into one reply, via the agent loop."""
 from __future__ import annotations
-
-import logging
-
-from app.application.responder import Responder
-from app.inference.base import InferenceError
-
-logger = logging.getLogger(__name__)
-
-FALLBACK_REPLY = (
-    "Сейчас не получилось получить ответ от локальной модели. "
-    "Попробуйте еще раз чуть позже."
-)
 
 
 class BotService:
-    def __init__(self, responder: Responder) -> None:
-        self._responder = responder
+    def __init__(self, agent) -> None:
+        self._agent = agent
 
-    def handle_message(self, text: str) -> str:
-        try:
-            return self._responder.respond(text)
-        except InferenceError:
-            logger.exception("Inference failed while handling message")
-            return FALLBACK_REPLY
+    def handle_message(self, chat_id: int, text: str) -> str:
+        return self._agent.handle_message(chat_id, text)

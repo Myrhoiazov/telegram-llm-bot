@@ -3,17 +3,22 @@ from __future__ import annotations
 
 import logging
 
+from app.agent.loop import AgentLoop
+from app.agent.system_prompt import build_system_prompt
 from app.application.bot_service import BotService
-from app.application.responder import LLMResponder
 from app.config import Config, ConfigError, load_config
-from app.inference.ollama import OllamaProvider
+from app.inference.ollama_chat import OllamaChatClient
+from app.memory.store import ConversationStore
 from app.telegram.client import TelegramAPIError, TelegramClient
 from app.telegram.typing_indicator import TypingIndicator
 from app.telegram.updates import parse_updates
+from app.tools.exec_tool import ExecTool, build_exec_env
 
 logger = logging.getLogger(__name__)
 
 ACCESS_DENIED_REPLY = "Доступ ограничен."
+NEW_CHAT_REPLY = "Начат новый диалог. Предыдущая история сохранена, но больше не используется как контекст."
+NEW_CHAT_COMMAND = "/new"
 
 
 def main() -> None:
@@ -31,20 +36,34 @@ def main() -> None:
         poll_timeout_seconds=config.poll_timeout_seconds,
         request_timeout_seconds=config.request_timeout_seconds,
     )
-    ollama_provider = OllamaProvider(
+    chat_client = OllamaChatClient(
         base_url=config.ollama_base_url,
         model=config.ollama_model,
         timeout_seconds=config.request_timeout_seconds,
     )
-    bot_service = BotService(LLMResponder(ollama_provider))
+    store = ConversationStore(config.memory_db_path)
+    exec_tool = ExecTool(
+        workspace_dir=config.exec_workspace_dir,
+        timeout_seconds=config.exec_timeout_seconds,
+        env=build_exec_env(config),
+    )
+    agent = AgentLoop(
+        chat_client=chat_client,
+        tool=exec_tool,
+        store=store,
+        max_steps=config.agent_max_steps,
+        max_context_messages=config.max_context_messages,
+        system_prompt=build_system_prompt(),
+    )
+    bot_service = BotService(agent)
 
     try:
-        run_polling_loop(telegram_client, bot_service, config)
+        run_polling_loop(telegram_client, bot_service, store, config)
     except KeyboardInterrupt:
         logger.info("Shutting down")
 
 
-def run_polling_loop(telegram_client: TelegramClient, bot_service: BotService, config: Config) -> None:
+def run_polling_loop(telegram_client, bot_service, store, config: Config) -> None:
     offset: int | None = None
     logger.info("Starting polling loop")
     while True:
@@ -65,8 +84,16 @@ def run_polling_loop(telegram_client: TelegramClient, bot_service: BotService, c
                     logger.exception("Failed to send access-denied reply to chat %s", message.chat_id)
                 continue
 
+            if message.text.strip() == NEW_CHAT_COMMAND:
+                store.start_new_conversation(message.chat_id)
+                try:
+                    telegram_client.send_message(message.chat_id, NEW_CHAT_REPLY)
+                except TelegramAPIError:
+                    logger.exception("Failed to send new-chat reply to chat %s", message.chat_id)
+                continue
+
             with TypingIndicator(telegram_client, message.chat_id, config.typing_action_interval_seconds):
-                reply = bot_service.handle_message(message.text)
+                reply = bot_service.handle_message(message.chat_id, message.text)
             try:
                 telegram_client.send_message(message.chat_id, reply)
             except TelegramAPIError:

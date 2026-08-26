@@ -1,5 +1,5 @@
 from app.config import Config
-from app.main import ACCESS_DENIED_REPLY, run_polling_loop
+from app.main import ACCESS_DENIED_REPLY, NEW_CHAT_REPLY, run_polling_loop
 
 
 def make_config(allowed_chat_id):
@@ -15,8 +15,8 @@ def make_config(allowed_chat_id):
         agent_max_steps=8,
         max_context_messages=30,
         exec_timeout_seconds=20,
-        exec_workspace_dir="/app/workspace",
-        memory_db_path="/app/data/memory.sqlite3",
+        exec_workspace_dir="/tmp/workspace",
+        memory_db_path=":memory:",
         email_imap_host="",
         email_imap_port=993,
         email_address="",
@@ -29,9 +29,18 @@ class FakeBotService:
         self._reply = reply
         self.calls = []
 
-    def handle_message(self, text):
-        self.calls.append(text)
+    def handle_message(self, chat_id, text):
+        self.calls.append((chat_id, text))
         return self._reply
+
+
+class FakeStore:
+    def __init__(self):
+        self.new_conversation_calls = []
+
+    def start_new_conversation(self, chat_id):
+        self.new_conversation_calls.append(chat_id)
+        return 1
 
 
 class FakeTelegramClient:
@@ -67,24 +76,26 @@ def _updates_payload(chat_id, text, update_id=1):
 def test_message_from_allowed_chat_is_handled():
     client = FakeTelegramClient([_updates_payload(555, "hi")])
     bot_service = FakeBotService(reply="hello back")
+    store = FakeStore()
     config = make_config(allowed_chat_id=555)
 
     try:
-        run_polling_loop(client, bot_service, config)
+        run_polling_loop(client, bot_service, store, config)
     except KeyboardInterrupt:
         pass
 
-    assert bot_service.calls == ["hi"]
+    assert bot_service.calls == [(555, "hi")]
     assert client.sent_messages == [(555, "hello back")]
 
 
 def test_message_from_disallowed_chat_is_rejected_without_calling_llm():
     client = FakeTelegramClient([_updates_payload(999, "hi")])
     bot_service = FakeBotService(reply="hello back")
+    store = FakeStore()
     config = make_config(allowed_chat_id=555)
 
     try:
-        run_polling_loop(client, bot_service, config)
+        run_polling_loop(client, bot_service, store, config)
     except KeyboardInterrupt:
         pass
 
@@ -95,12 +106,44 @@ def test_message_from_disallowed_chat_is_rejected_without_calling_llm():
 def test_allowed_chat_id_none_accepts_any_chat():
     client = FakeTelegramClient([_updates_payload(42, "hi")])
     bot_service = FakeBotService(reply="hello back")
+    store = FakeStore()
     config = make_config(allowed_chat_id=None)
 
     try:
-        run_polling_loop(client, bot_service, config)
+        run_polling_loop(client, bot_service, store, config)
     except KeyboardInterrupt:
         pass
 
-    assert bot_service.calls == ["hi"]
+    assert bot_service.calls == [(42, "hi")]
     assert client.sent_messages == [(42, "hello back")]
+
+
+def test_new_command_starts_new_conversation_without_calling_agent():
+    client = FakeTelegramClient([_updates_payload(555, "/new")])
+    bot_service = FakeBotService(reply="should not be used")
+    store = FakeStore()
+    config = make_config(allowed_chat_id=555)
+
+    try:
+        run_polling_loop(client, bot_service, store, config)
+    except KeyboardInterrupt:
+        pass
+
+    assert bot_service.calls == []
+    assert store.new_conversation_calls == [555]
+    assert client.sent_messages == [(555, NEW_CHAT_REPLY)]
+
+
+def test_new_command_from_disallowed_chat_is_still_rejected():
+    client = FakeTelegramClient([_updates_payload(999, "/new")])
+    bot_service = FakeBotService()
+    store = FakeStore()
+    config = make_config(allowed_chat_id=555)
+
+    try:
+        run_polling_loop(client, bot_service, store, config)
+    except KeyboardInterrupt:
+        pass
+
+    assert store.new_conversation_calls == []
+    assert client.sent_messages == [(999, ACCESS_DENIED_REPLY)]
