@@ -155,3 +155,33 @@ def test_chat_raises_when_message_missing():
 
     with pytest.raises(InferenceError):
         client.chat([{"role": "user", "content": "hi"}], tools=[])
+
+
+def test_chat_parses_token_counts_when_present():
+    session = _FakeSession(
+        response=_FakeResponse(
+            json_data={
+                "message": {"role": "assistant", "content": "hi there"},
+                "prompt_eval_count": 42,
+                "eval_count": 7,
+            }
+        )
+    )
+    client = make_client(session)
+
+    result = client.chat([{"role": "user", "content": "hi"}], tools=[])
+
+    assert result.prompt_tokens == 42
+    assert result.completion_tokens == 7
+
+
+def test_chat_leaves_token_counts_none_when_absent():
+    session = _FakeSession(
+        response=_FakeResponse(json_data={"message": {"role": "assistant", "content": "hi there"}})
+    )
+    client = make_client(session)
+
+    result = client.chat([{"role": "user", "content": "hi"}], tools=[])
+
+    assert result.prompt_tokens is None
+    assert result.completion_tokens is None
