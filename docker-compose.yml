@@ -16,9 +16,21 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ALLOWED_CHAT_ID: ${ALLOWED_CHAT_ID:-}
       TYPING_ACTION_INTERVAL_SECONDS: ${TYPING_ACTION_INTERVAL_SECONDS:-4}
+      AGENT_MAX_STEPS: ${AGENT_MAX_STEPS:-8}
+      MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-30}
+      EXEC_TIMEOUT_SECONDS: ${EXEC_TIMEOUT_SECONDS:-20}
+      EXEC_WORKSPACE_DIR: /app/workspace
+      MEMORY_DB_PATH: /app/data/memory.sqlite3
+      EMAIL_IMAP_HOST: ${EMAIL_IMAP_HOST:-}
+      EMAIL_IMAP_PORT: ${EMAIL_IMAP_PORT:-993}
+      EMAIL_ADDRESS: ${EMAIL_ADDRESS:-}
+      EMAIL_APP_PASSWORD: ${EMAIL_APP_PASSWORD:-}
+    volumes:
+      - bot_data:/app/data
     depends_on:
       - ollama
     restart: unless-stopped
 
 volumes:
   ollama_data:
+  bot_data:
