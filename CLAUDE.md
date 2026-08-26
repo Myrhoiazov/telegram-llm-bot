@@ -161,7 +161,9 @@ Do not log raw secrets or sensitive payloads.
 
 ## Cloud non-goals for current implementation
 
-Do not implement now:
+`tool execution`, `agent loop`, and `memory` are no longer non-goals: they are implemented locally,
+in-process (`app/agent/`, `app/tools/`, `app/memory/`), which is what `spec2.md` asked for. The rest of the
+list still applies. Do not implement now:
 
 - Kubernetes;
 - Terraform;
@@ -175,7 +177,9 @@ Do not implement now:
 - separate Agent Service;
 - RAG service;
 - MCP service;
-- sandbox worker pool;
+- sandbox worker pool (documented next step: a dedicated exec-runner sidecar service holding the Docker
+  socket — only that container, never telegram-bot — spinning up short-lived `--rm --network none`
+  containers per `execute_command` call; see `docs/adr/0003-hardened-in-container-exec.md`);
 - CI/CD pipeline.
 
 ## Current implementation rules
@@ -187,4 +191,17 @@ For the current bot:
 - keep local inference separate from the bot process;
 - keep code portable enough to move from local Docker Compose to a VM or container runtime later;
 - document cloud evolution without implementing cloud infrastructure.
+
+## `execute_command` runs in-process, not in a sandbox container
+
+The `execute_command` tool (`app/tools/exec_tool.py`) runs as a subprocess inside the existing
+`telegram-bot` container — not inside a separate sandboxed container. The container itself is the sandbox
+boundary: non-root, non-privileged, no host mounts, no Docker socket. On top of that, the tool adds a fixed
+non-source workspace `cwd`, a per-call timeout (`EXEC_TIMEOUT_SECONDS`), truncated stdout/stderr, and a
+restricted environment allowlist instead of the bot process's full environment.
+
+This is a deliberate scope decision for the current homework stage (per `docs/adr/0003-hardened-in-container-exec.md`),
+not an oversight: a real Docker-backed sandbox would require a separate exec-runner sidecar service holding
+the Docker socket, which is out of scope while `sandbox worker pool` remains a listed non-goal above. Do not
+add that sidecar without first revisiting this non-goal.
 
