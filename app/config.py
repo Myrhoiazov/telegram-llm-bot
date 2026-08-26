@@ -31,6 +31,11 @@ class Config:
     email_imap_port: int
     email_address: str
     email_app_password: str
+    trace_enabled: bool = True
+    dashboard_enabled: bool = True
+    dashboard_host: str = "0.0.0.0"
+    dashboard_port: int = 8080
+    trace_max_list_limit: int = 100
 
 
 _DEFAULTS = {
@@ -46,6 +51,11 @@ _DEFAULTS = {
     "EXEC_WORKSPACE_DIR": "/app/workspace",
     "MEMORY_DB_PATH": "/app/data/memory.sqlite3",
     "EMAIL_IMAP_PORT": "993",
+    "TRACE_ENABLED": "true",
+    "DASHBOARD_ENABLED": "true",
+    "DASHBOARD_HOST": "0.0.0.0",
+    "DASHBOARD_PORT": "8080",
+    "TRACE_MAX_LIST_LIMIT": "100",
 }
 
 
@@ -92,6 +102,14 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     email_address = source.get("EMAIL_ADDRESS", "").strip()
     email_app_password = source.get("EMAIL_APP_PASSWORD", "").strip()
 
+    trace_enabled = _parse_bool(source, "TRACE_ENABLED", _DEFAULTS["TRACE_ENABLED"])
+    dashboard_enabled = _parse_bool(source, "DASHBOARD_ENABLED", _DEFAULTS["DASHBOARD_ENABLED"])
+    dashboard_host = source.get("DASHBOARD_HOST", _DEFAULTS["DASHBOARD_HOST"]).strip()
+    dashboard_port = _parse_positive_int(source, "DASHBOARD_PORT", _DEFAULTS["DASHBOARD_PORT"])
+    trace_max_list_limit = _parse_positive_int(
+        source, "TRACE_MAX_LIST_LIMIT", _DEFAULTS["TRACE_MAX_LIST_LIMIT"]
+    )
+
     return Config(
         telegram_bot_token=token,
         ollama_base_url=ollama_base_url.rstrip("/"),
@@ -110,6 +128,11 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         email_imap_port=email_imap_port,
         email_address=email_address,
         email_app_password=email_app_password,
+        trace_enabled=trace_enabled,
+        dashboard_enabled=dashboard_enabled,
+        dashboard_host=dashboard_host,
+        dashboard_port=dashboard_port,
+        trace_max_list_limit=trace_max_list_limit,
     )
 
 
@@ -135,3 +158,12 @@ def _parse_positive_int(source: dict[str, str], key: str, default: str) -> int:
     if value <= 0:
         raise ConfigError(f"{key} must be positive, got {value}")
     return value
+
+
+def _parse_bool(source: dict[str, str], key: str, default: str) -> bool:
+    raw = (source.get(key, default).strip() or default).lower()
+    if raw in ("true", "1", "yes"):
+        return True
+    if raw in ("false", "0", "no"):
+        return False
+    raise ConfigError(f"{key} must be a boolean (true/false), got {raw!r}")

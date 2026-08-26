@@ -138,3 +138,41 @@ def test_load_config_reads_agent_memory_exec_email_overrides():
     assert config.email_imap_port == 1993
     assert config.email_address == "bot@example.com"
     assert config.email_app_password == "secret"
+
+
+def test_load_config_applies_trace_and_dashboard_defaults():
+    env = {"TELEGRAM_BOT_TOKEN": "test-token"}
+
+    config = load_config(env)
+
+    assert config.trace_enabled is True
+    assert config.dashboard_enabled is True
+    assert config.dashboard_host == "0.0.0.0"
+    assert config.dashboard_port == 8080
+    assert config.trace_max_list_limit == 100
+
+
+def test_load_config_reads_trace_and_dashboard_overrides():
+    env = {
+        "TELEGRAM_BOT_TOKEN": "test-token",
+        "TRACE_ENABLED": "false",
+        "DASHBOARD_ENABLED": "FALSE",
+        "DASHBOARD_HOST": "127.0.0.1",
+        "DASHBOARD_PORT": "9090",
+        "TRACE_MAX_LIST_LIMIT": "250",
+    }
+
+    config = load_config(env)
+
+    assert config.trace_enabled is False
+    assert config.dashboard_enabled is False
+    assert config.dashboard_host == "127.0.0.1"
+    assert config.dashboard_port == 9090
+    assert config.trace_max_list_limit == 250
+
+
+def test_load_config_rejects_invalid_boolean():
+    env = {"TELEGRAM_BOT_TOKEN": "test-token", "TRACE_ENABLED": "maybe"}
+
+    with pytest.raises(ConfigError):
+        load_config(env)
