@@ -64,6 +64,12 @@ def main() -> None:
         logger.info("Shutting down")
 
 
+def _is_new_chat_command(text: str) -> bool:
+    """True for `/new`, including Telegram's group form `/new@botname` and trailing arguments."""
+    first_token = text.strip().split(maxsplit=1)[0] if text.strip() else ""
+    return first_token.split("@", 1)[0] == NEW_CHAT_COMMAND
+
+
 def run_polling_loop(telegram_client, bot_service, store, config: Config) -> None:
     offset: int | None = None
     logger.info("Starting polling loop")
@@ -85,14 +91,15 @@ def run_polling_loop(telegram_client, bot_service, store, config: Config) -> Non
                     logger.exception("Failed to send access-denied reply to chat %s", message.chat_id)
                 continue
 
-            if message.text.strip() == NEW_CHAT_COMMAND:
+            if _is_new_chat_command(message.text):
                 try:
                     store.start_new_conversation(message.chat_id)
+                    reply = NEW_CHAT_REPLY
                 except Exception:
                     logger.exception("Failed to start new conversation for chat %s", message.chat_id)
-                    continue
+                    reply = UNEXPECTED_ERROR_REPLY
                 try:
-                    telegram_client.send_message(message.chat_id, NEW_CHAT_REPLY)
+                    telegram_client.send_message(message.chat_id, reply)
                 except TelegramAPIError:
                     logger.exception("Failed to send new-chat reply to chat %s", message.chat_id)
                 continue

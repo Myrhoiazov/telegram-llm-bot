@@ -1,6 +1,7 @@
 """Ollama /api/chat client supporting native tool-calling."""
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -64,6 +65,20 @@ class OllamaChatClient:
         return _parse_message(message)
 
 
+def _parse_arguments(raw: object) -> dict:
+    """Tool-call arguments come back as an object, but some models/versions send a JSON string."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            logger.warning("Ollama chat returned unparsable tool-call arguments")
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
 def _parse_message(message: dict) -> ChatMessage:
     role = message.get("role", "assistant")
     content = message.get("content") or ""
@@ -72,7 +87,7 @@ def _parse_message(message: dict) -> ChatMessage:
         ToolCall(
             id=call.get("id") or f"call_{index}",
             name=call["function"]["name"],
-            arguments=call["function"].get("arguments") or {},
+            arguments=_parse_arguments(call["function"].get("arguments")),
         )
         for index, call in enumerate(raw_tool_calls)
         if isinstance(call, dict) and isinstance(call.get("function"), dict) and "name" in call["function"]

@@ -148,6 +148,37 @@ def test_new_command_starts_new_conversation_without_calling_agent():
     assert client.sent_messages == [(555, NEW_CHAT_REPLY)]
 
 
+def test_new_command_with_bot_mention_starts_new_conversation():
+    client = FakeTelegramClient([_updates_payload(555, "/new@my_test_bot")])
+    bot_service = FakeBotService(reply="should not be used")
+    store = FakeStore()
+    config = make_config(allowed_chat_id=555)
+
+    try:
+        run_polling_loop(client, bot_service, store, config)
+    except KeyboardInterrupt:
+        pass
+
+    assert bot_service.calls == []
+    assert store.new_conversation_calls == [555]
+    assert client.sent_messages == [(555, NEW_CHAT_REPLY)]
+
+
+def test_command_with_new_prefix_is_not_treated_as_new_command():
+    client = FakeTelegramClient([_updates_payload(555, "/newsletter")])
+    bot_service = FakeBotService(reply="hello back")
+    store = FakeStore()
+    config = make_config(allowed_chat_id=555)
+
+    try:
+        run_polling_loop(client, bot_service, store, config)
+    except KeyboardInterrupt:
+        pass
+
+    assert store.new_conversation_calls == []
+    assert bot_service.calls == [(555, "/newsletter")]
+
+
 def test_new_command_from_disallowed_chat_is_still_rejected():
     client = FakeTelegramClient([_updates_payload(999, "/new")])
     bot_service = FakeBotService()
@@ -189,4 +220,4 @@ def test_store_start_new_conversation_exception_does_not_crash_polling_loop():
         pass
 
     assert store.new_conversation_calls == [555]
-    assert client.sent_messages == []
+    assert client.sent_messages == [(555, UNEXPECTED_ERROR_REPLY)]

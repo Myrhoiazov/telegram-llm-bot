@@ -73,6 +73,58 @@ def test_chat_parses_tool_calls():
     assert result.tool_calls == (ToolCall(id="call_1", name="execute_command", arguments={"command": "date"}),)
 
 
+def test_chat_parses_tool_call_arguments_given_as_json_string():
+    session = _FakeSession(
+        response=_FakeResponse(
+            json_data={
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "function": {
+                                "name": "execute_command",
+                                "arguments": '{"command": "date"}',
+                            },
+                        }
+                    ],
+                }
+            }
+        )
+    )
+    client = make_client(session)
+
+    result = client.chat([{"role": "user", "content": "what time is it"}], tools=[])
+
+    assert result.tool_calls == (
+        ToolCall(id="call_1", name="execute_command", arguments={"command": "date"}),
+    )
+
+
+def test_chat_falls_back_to_empty_arguments_when_unparsable():
+    session = _FakeSession(
+        response=_FakeResponse(
+            json_data={
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {"function": {"name": "execute_command", "arguments": "not json"}}
+                    ],
+                }
+            }
+        )
+    )
+    client = make_client(session)
+
+    result = client.chat([{"role": "user", "content": "hi"}], tools=[])
+
+    assert result.tool_calls == (
+        ToolCall(id="call_0", name="execute_command", arguments={}),
+    )
+
+
 def test_chat_raises_on_network_error():
     session = _FakeSession(exception=requests.ConnectionError("boom"))
     client = make_client(session)
