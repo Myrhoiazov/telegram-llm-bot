@@ -110,7 +110,7 @@ def test_emit_assigns_incrementing_sequence(tmp_path):
 
 
 def test_complete_trace_emits_event_and_updates_status(tmp_path):
-    tracer, store, subscriber_store = make_tracer(tmp_path)
+    tracer, store, _ = make_tracer(tmp_path)
     trace_id = tracer.start_trace(chat_id=1, conversation_id=1, user_message="hi", model="m")
 
     tracer.complete_trace(trace_id, duration_ms=50, agent_steps=1, llm_calls=1, tool_calls=0)
@@ -175,11 +175,39 @@ def test_tracer_swallows_store_failures(tmp_path):
         def append_event(self, *args, **kwargs):
             raise RuntimeError("disk full")
 
+        def update_trace_status(self, *args, **kwargs):
+            raise RuntimeError("disk full")
+
     tracer = AgentTracer(BoomStore(), EventBroadcaster())
 
     trace_id = tracer.start_trace(chat_id=1, conversation_id=1, user_message="hi", model="m")
     tracer.emit(trace_id, "context_loaded", payload={})
 
+    assert isinstance(trace_id, str)
+
+
+def test_tracer_swallows_finish_store_failures(tmp_path):
+    """Critical: verify _finish exception handling via complete_trace, fail_trace, max_steps_trace."""
+    class BoomStoreFinish:
+        def create_trace(self, *args, **kwargs):
+            pass
+
+        def append_event(self, *args, **kwargs):
+            pass
+
+        def update_trace_status(self, *args, **kwargs):
+            raise RuntimeError("database locked")
+
+    tracer = AgentTracer(BoomStoreFinish(), EventBroadcaster())
+
+    trace_id = tracer.start_trace(chat_id=1, conversation_id=1, user_message="hi", model="m")
+
+    # All three lifecycle methods must swallow exceptions from update_trace_status
+    tracer.complete_trace(trace_id, duration_ms=50, agent_steps=1, llm_calls=1, tool_calls=0)
+    tracer.fail_trace(trace_id, error_type="TestError", message="test", duration_ms=50, agent_steps=1, llm_calls=1, tool_calls=0)
+    tracer.max_steps_trace(trace_id, max_steps=8, duration_ms=50, agent_steps=8, llm_calls=8, tool_calls=0)
+
+    # If exceptions were propagated, the test would have failed already
     assert isinstance(trace_id, str)
 
 
