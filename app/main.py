@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 ACCESS_DENIED_REPLY = "Доступ ограничен."
 NEW_CHAT_REPLY = "Начат новый диалог. Предыдущая история сохранена, но больше не используется как контекст."
+UNEXPECTED_ERROR_REPLY = "Произошла непредвиденная ошибка при обработке сообщения. Попробуйте ещё раз."
 NEW_CHAT_COMMAND = "/new"
 
 
@@ -85,7 +86,11 @@ def run_polling_loop(telegram_client, bot_service, store, config: Config) -> Non
                 continue
 
             if message.text.strip() == NEW_CHAT_COMMAND:
-                store.start_new_conversation(message.chat_id)
+                try:
+                    store.start_new_conversation(message.chat_id)
+                except Exception:
+                    logger.exception("Failed to start new conversation for chat %s", message.chat_id)
+                    continue
                 try:
                     telegram_client.send_message(message.chat_id, NEW_CHAT_REPLY)
                 except TelegramAPIError:
@@ -93,7 +98,11 @@ def run_polling_loop(telegram_client, bot_service, store, config: Config) -> Non
                 continue
 
             with TypingIndicator(telegram_client, message.chat_id, config.typing_action_interval_seconds):
-                reply = bot_service.handle_message(message.chat_id, message.text)
+                try:
+                    reply = bot_service.handle_message(message.chat_id, message.text)
+                except Exception:
+                    logger.exception("Failed to handle message for chat %s", message.chat_id)
+                    reply = UNEXPECTED_ERROR_REPLY
             try:
                 telegram_client.send_message(message.chat_id, reply)
             except TelegramAPIError:

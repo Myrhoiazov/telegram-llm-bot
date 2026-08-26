@@ -37,6 +37,14 @@ def _truncate(text: str) -> str:
     return text[:MAX_OUTPUT_CHARS] + "...[truncated]"
 
 
+def _decode(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value
+
+
 class ExecTool:
     name = "execute_command"
 
@@ -54,14 +62,15 @@ class ExecTool:
                 env=self._env,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=self._timeout_seconds,
             )
         except subprocess.TimeoutExpired as exc:
             logger.warning("execute_command timed out: command=%r", command)
             return ExecResult(
                 exit_code=-1,
-                stdout=exc.stdout or "",
-                stderr=exc.stderr or "",
+                stdout=_decode(exc.stdout),
+                stderr=_decode(exc.stderr),
                 timed_out=True,
             )
         return ExecResult(

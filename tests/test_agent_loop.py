@@ -128,6 +128,35 @@ def test_returns_fallback_on_inference_error():
     assert reply == FALLBACK_REPLY
 
 
+def test_fallback_reply_is_not_persisted_to_store():
+    chat_client = FakeChatClient([InferenceError("boom")])
+    store = ConversationStore(":memory:")
+    loop = make_loop(chat_client, store=store)
+
+    loop.handle_message(chat_id=1, text="hi")
+
+    conversation_id = store.active_conversation_id(chat_id=1)
+    stored = store.recent_messages(conversation_id, limit=10)
+    assert [(m.role, m.content) for m in stored] == [("user", "hi")]
+
+
+def test_max_steps_reply_is_not_persisted_to_store():
+    looping_call = ChatMessage(
+        role="assistant",
+        content="",
+        tool_calls=(ToolCall(id="call_1", name="execute_command", arguments={"command": "date"}),),
+    )
+    chat_client = FakeChatClient([looping_call] * 3)
+    store = ConversationStore(":memory:")
+    loop = make_loop(chat_client, store=store, max_steps=3)
+
+    loop.handle_message(chat_id=1, text="loop forever")
+
+    conversation_id = store.active_conversation_id(chat_id=1)
+    stored = store.recent_messages(conversation_id, limit=10)
+    assert [(m.role, m.content) for m in stored] == [("user", "loop forever")]
+
+
 def test_persists_only_user_message_and_final_answer():
     chat_client = FakeChatClient(
         [

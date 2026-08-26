@@ -144,8 +144,12 @@ many recent messages from the chat's active conversation are sent to the model a
 character limit is truncated before being returned to the model. `EMAIL_IMAP_HOST`, `EMAIL_IMAP_PORT`,
 `EMAIL_ADDRESS`, and `EMAIL_APP_PASSWORD` are optional and only needed for the `email` skill under `skills/`;
 when set, they are the only extra variables passed into the `execute_command` subprocess environment (see
-`app/tools/exec_tool.py:build_exec_env`) — the tool never inherits the bot's full process environment, so a
-model-issued command cannot see `TELEGRAM_BOT_TOKEN` or other secrets it has no reason to need. Two more
+`app/tools/exec_tool.py:build_exec_env`) — the tool does not inherit the bot's full process environment, so
+an innocuous-looking model-issued command (e.g. plain `env`) will not accidentally dump `TELEGRAM_BOT_TOKEN`
+or other secrets it has no reason to need. This allowlist is a hygiene measure against accidental exposure,
+not a hard security boundary: `execute_command` still runs inside the same container/process as the bot
+rather than a separate sandboxed process, so a sufficiently deliberate command could still reach the parent
+process's environment. Real isolation is what the exec-runner sidecar described below is for. Two more
 variables have defaults in `app/config.py` and normally do not need to be set: `EXEC_WORKSPACE_DIR`
 (`/app/workspace`, the fixed `cwd` for `execute_command`) and `MEMORY_DB_PATH` (`/app/data/memory.sqlite3`,
 the SQLite conversation store).

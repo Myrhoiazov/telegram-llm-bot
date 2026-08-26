@@ -1,5 +1,5 @@
 from app.config import Config
-from app.main import ACCESS_DENIED_REPLY, NEW_CHAT_REPLY, run_polling_loop
+from app.main import ACCESS_DENIED_REPLY, NEW_CHAT_REPLY, UNEXPECTED_ERROR_REPLY, run_polling_loop
 
 
 def make_config(allowed_chat_id):
@@ -41,6 +41,20 @@ class FakeStore:
     def start_new_conversation(self, chat_id):
         self.new_conversation_calls.append(chat_id)
         return 1
+
+
+class FailingBotService:
+    def handle_message(self, chat_id, text):
+        raise RuntimeError("boom")
+
+
+class FailingStore:
+    def __init__(self):
+        self.new_conversation_calls = []
+
+    def start_new_conversation(self, chat_id):
+        self.new_conversation_calls.append(chat_id)
+        raise RuntimeError("boom")
 
 
 class FakeTelegramClient:
@@ -147,3 +161,32 @@ def test_new_command_from_disallowed_chat_is_still_rejected():
 
     assert store.new_conversation_calls == []
     assert client.sent_messages == [(999, ACCESS_DENIED_REPLY)]
+
+
+def test_bot_service_exception_does_not_crash_polling_loop():
+    client = FakeTelegramClient([_updates_payload(555, "hi")])
+    bot_service = FailingBotService()
+    store = FakeStore()
+    config = make_config(allowed_chat_id=555)
+
+    try:
+        run_polling_loop(client, bot_service, store, config)
+    except KeyboardInterrupt:
+        pass
+
+    assert client.sent_messages == [(555, UNEXPECTED_ERROR_REPLY)]
+
+
+def test_store_start_new_conversation_exception_does_not_crash_polling_loop():
+    client = FakeTelegramClient([_updates_payload(555, "/new")])
+    bot_service = FakeBotService()
+    store = FailingStore()
+    config = make_config(allowed_chat_id=555)
+
+    try:
+        run_polling_loop(client, bot_service, store, config)
+    except KeyboardInterrupt:
+        pass
+
+    assert store.new_conversation_calls == [555]
+    assert client.sent_messages == []

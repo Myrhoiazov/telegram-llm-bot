@@ -198,7 +198,11 @@ The `execute_command` tool (`app/tools/exec_tool.py`) runs as a subprocess insid
 `telegram-bot` container — not inside a separate sandboxed container. The container itself is the sandbox
 boundary: non-root, non-privileged, no host mounts, no Docker socket. On top of that, the tool adds a fixed
 non-source workspace `cwd`, a per-call timeout (`EXEC_TIMEOUT_SECONDS`), truncated stdout/stderr, and a
-restricted environment allowlist instead of the bot process's full environment.
+restricted environment allowlist instead of the bot process's full environment. That allowlist stops
+*accidental* exposure of secrets like `TELEGRAM_BOT_TOKEN` (e.g. via a stray `env` command) — it is not a
+hard isolation boundary, since `execute_command` still shares a container/process with the bot rather than
+running in a separate sandboxed process. Genuine isolation is what the exec-runner sidecar (see
+`docs/adr/0003-hardened-in-container-exec.md`) is for.
 
 This is a deliberate scope decision for the current homework stage (per `docs/adr/0003-hardened-in-container-exec.md`),
 not an oversight: a real Docker-backed sandbox would require a separate exec-runner sidecar service holding

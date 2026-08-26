@@ -47,7 +47,8 @@ class AgentLoop:
         tools = [self._tool.schema()]
         final_text = self._run_steps(messages, tools)
 
-        self._store.append_message(conversation_id, "assistant", final_text)
+        if final_text not in (FALLBACK_REPLY, MAX_STEPS_REPLY):
+            self._store.append_message(conversation_id, "assistant", final_text)
         return final_text
 
     def _run_steps(self, messages: list[dict], tools: list[dict]) -> str:

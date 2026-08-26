@@ -50,6 +50,15 @@ def test_to_tool_content_truncates_long_output(tmp_path):
     assert "...[truncated]" in content
 
 
+def test_execute_command_handles_invalid_utf8_output_without_raising(tmp_path):
+    tool = make_tool(tmp_path)
+
+    result = tool.run("python3 -c \"import sys; sys.stdout.buffer.write(b'\\xff\\xfe')\"")
+
+    assert isinstance(result.stdout, str)
+    assert result.exit_code == 0
+
+
 def test_schema_declares_command_parameter(tmp_path):
     tool = make_tool(tmp_path)
 
