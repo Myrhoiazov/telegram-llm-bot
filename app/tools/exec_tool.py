@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -22,19 +23,19 @@ class ExecResult:
     stdout: str
     stderr: str
     timed_out: bool
+    duration_ms: int
+    truncated: bool
 
     def to_tool_content(self) -> str:
-        stdout = _truncate(self.stdout)
-        stderr = _truncate(self.stderr)
         if self.timed_out:
-            return f"timed_out=true exit_code={self.exit_code}\nstdout={stdout}\nstderr={stderr}"
-        return f"exit_code={self.exit_code}\nstdout={stdout}\nstderr={stderr}"
+            return f"timed_out=true exit_code={self.exit_code}\nstdout={self.stdout}\nstderr={self.stderr}"
+        return f"exit_code={self.exit_code}\nstdout={self.stdout}\nstderr={self.stderr}"
 
 
-def _truncate(text: str) -> str:
+def _truncate(text: str) -> tuple[str, bool]:
     if len(text) <= MAX_OUTPUT_CHARS:
-        return text
-    return text[:MAX_OUTPUT_CHARS] + "...[truncated]"
+        return text, False
+    return text[:MAX_OUTPUT_CHARS] + "...[truncated]", True
 
 
 def _decode(value: str | bytes | None) -> str:
@@ -55,6 +56,7 @@ class ExecTool:
         self._env = env
 
     def run(self, command: str) -> ExecResult:
+        start = time.monotonic()
         try:
             completed = subprocess.run(
                 ["/bin/sh", "-c", command],
@@ -66,18 +68,28 @@ class ExecTool:
                 timeout=self._timeout_seconds,
             )
         except subprocess.TimeoutExpired as exc:
+            duration_ms = int((time.monotonic() - start) * 1000)
             logger.warning("execute_command timed out: command=%r", command)
+            stdout, stdout_truncated = _truncate(_decode(exc.stdout))
+            stderr, stderr_truncated = _truncate(_decode(exc.stderr))
             return ExecResult(
                 exit_code=-1,
-                stdout=_decode(exc.stdout),
-                stderr=_decode(exc.stderr),
+                stdout=stdout,
+                stderr=stderr,
                 timed_out=True,
+                duration_ms=duration_ms,
+                truncated=stdout_truncated or stderr_truncated,
             )
+        duration_ms = int((time.monotonic() - start) * 1000)
+        stdout, stdout_truncated = _truncate(completed.stdout)
+        stderr, stderr_truncated = _truncate(completed.stderr)
         return ExecResult(
             exit_code=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=stdout,
+            stderr=stderr,
             timed_out=False,
+            duration_ms=duration_ms,
+            truncated=stdout_truncated or stderr_truncated,
         )
 
     def schema(self) -> dict:

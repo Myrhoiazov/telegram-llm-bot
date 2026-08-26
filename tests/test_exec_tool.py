@@ -101,3 +101,29 @@ def test_build_exec_env_includes_email_vars_when_configured():
     assert env["EMAIL_ADDRESS"] == "bot@example.com"
     assert env["EMAIL_APP_PASSWORD"] == "secret"
     assert "TELEGRAM_BOT_TOKEN" not in env
+
+
+def test_execute_command_reports_duration_ms(tmp_path):
+    tool = make_tool(tmp_path)
+
+    result = tool.run("echo hi")
+
+    assert isinstance(result.duration_ms, int)
+    assert result.duration_ms >= 0
+
+
+def test_execute_command_reports_truncated_flag_false_for_short_output(tmp_path):
+    tool = make_tool(tmp_path)
+
+    result = tool.run("echo hi")
+
+    assert result.truncated is False
+
+
+def test_execute_command_reports_truncated_flag_true_for_long_output(tmp_path):
+    tool = make_tool(tmp_path)
+
+    result = tool.run("python3 -c \"print('x' * 5000)\"")
+
+    assert result.truncated is True
+    assert "...[truncated]" in result.stdout
