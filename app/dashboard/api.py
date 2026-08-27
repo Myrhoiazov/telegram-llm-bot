@@ -28,6 +28,13 @@ def build_handler_class(
 ):
     class DashboardRequestHandler(BaseHTTPRequestHandler):
         server_version = "AgentTraceDashboard/1.0"
+        # Required for the SSE endpoint's Transfer-Encoding: chunked to be protocol-correct: chunked
+        # framing is only defined for HTTP/1.1. Without this, the status line would declare
+        # HTTP/1.0 while sending a chunked body — some clients (requests/urllib3, curl) tolerate
+        # this by keying chunk-parsing off the header alone, but that's undocumented leniency, not
+        # a guarantee. Harmless for the REST/static endpoints too, since they already send explicit
+        # Content-Length and are valid under either declared HTTP version.
+        protocol_version = "HTTP/1.1"
 
         def log_message(self, format: str, *args) -> None:
             logger.info("dashboard: " + format, *args)
@@ -98,6 +105,10 @@ def build_handler_class(
             # the client ever sees the first event. Real chunked framing makes http.client read
             # exactly one server-declared chunk at a time via _read_chunked(), so each write is
             # visible to the client as soon as it is flushed, regardless of chunk_size.
+            # Note: this stream is intentionally never terminated with a final 0\r\n\r\n chunk —
+            # SSE has no defined end-of-stream marker. The connection just stays open until the
+            # client disconnects or a write fails, at which point the except/finally below cleans
+            # up the subscription.
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
