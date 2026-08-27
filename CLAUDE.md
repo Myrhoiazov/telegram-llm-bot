@@ -70,9 +70,13 @@ The first implementation should remain local-first:
 - local Telegram polling process;
 - local Ollama inference;
 - no public web server required;
-- no inbound HTTP endpoint required;
+- no inbound HTTP endpoint required — except the one exception below;
 - no webhook required;
 - no cloud dependency required.
+
+Exception: the agent trace dashboard (`app/dashboard/`) is a local-only inbound HTTP endpoint bound to
+`127.0.0.1` (see "Cloud non-goals for current implementation" below). It is not a public web server and
+does not change the local-first posture.
 
 Long polling is enough for the current stage.
 
@@ -140,6 +144,16 @@ telegram-bot (in Docker Compose) -> host.docker.internal:11434 -> ollama (native
 telegram-bot -> Telegram Bot API
 ```
 
+Locally, the trace dashboard (`app/dashboard/`) also opens an inbound HTTP surface, but only on the loopback
+interface: `telegram-bot` binds it to `127.0.0.1` inside the container by app-level default (Docker Compose
+sets it to `0.0.0.0` internally, relying on the host-side `127.0.0.1:` port publish for the actual boundary —
+see `## Current implementation rules` below and `README.md`'s `## Configuration` section). No other inbound
+traffic is accepted.
+
+```text
+browser (developer's machine) -> 127.0.0.1:8080 -> telegram-bot dashboard server (trace list + SSE)
+```
+
 Future cloud deployments should restrict network access:
 
 - allow Telegram API;
@@ -169,7 +183,16 @@ Do not log raw secrets or sensitive payloads.
 `tool execution`, `agent loop`, and `memory` are no longer non-goals: they are implemented locally,
 in-process (`app/agent/`, `app/tools/`, `app/memory/`), which is what `docs/specifications/spec2.md` asked
 for. The rest of the
-list still applies. Do not implement now:
+list still applies.
+
+A local-only inbound HTTP endpoint is also no longer a non-goal: the agent trace dashboard (`app/dashboard/`)
+implements exactly that, in-process, bound to `127.0.0.1` (directly by app-level default, and via Docker's
+host-side port publish when run through Compose — see `## Network model` above). This is deliberately narrow:
+it is a local observability UI for viewing trace history and live events, not a public API and not a webhook
+receiver — both of those remain explicitly banned in the list below. Do not widen the dashboard's bind address
+or expose it beyond localhost without revisiting this non-goal.
+
+Still do not implement now:
 
 - Kubernetes;
 - Terraform;

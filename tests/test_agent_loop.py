@@ -1,3 +1,5 @@
+import pytest
+
 from app.agent.loop import FALLBACK_REPLY, MAX_STEPS_REPLY, AgentLoop
 from app.inference.base import InferenceError
 from app.inference.ollama_chat import ChatMessage, ToolCall
@@ -290,6 +292,37 @@ def test_fail_trace_called_on_inference_error():
 
     assert reply == FALLBACK_REPLY
     assert tracer.calls[-1] == ("fail_trace", {"trace_id": "trace-1", "error_type": "InferenceError", "message": "boom"})
+
+
+def test_non_inference_exception_calls_fail_trace_and_propagates():
+    """Regression for final-branch-review finding #1: a non-InferenceError exception (e.g. a bug in the
+    chat client, tool dispatch, or store) must still close the trace via fail_trace before propagating,
+    so the trace row never gets stuck RUNNING forever. app/main.py's existing catch-all is what decides
+    what the user sees; this only guarantees the trace is closed first."""
+    chat_client = FakeChatClient([RuntimeError("unexpected boom")])
+    tracer = FakeTracer()
+    loop = make_loop(chat_client, tracer=tracer)
+
+    with pytest.raises(RuntimeError, match="unexpected boom"):
+        loop.handle_message(chat_id=1, text="hi")
+
+    assert tracer.calls[-1] == (
+        "fail_trace",
+        {"trace_id": "trace-1", "error_type": "RuntimeError", "message": "unexpected boom"},
+    )
+
+
+def test_non_inference_exception_does_not_persist_assistant_message():
+    chat_client = FakeChatClient([RuntimeError("unexpected boom")])
+    store = ConversationStore(":memory:")
+    loop = make_loop(chat_client, store=store)
+
+    with pytest.raises(RuntimeError):
+        loop.handle_message(chat_id=1, text="hi")
+
+    conversation_id = store.active_conversation_id(chat_id=1)
+    stored = store.recent_messages(conversation_id, limit=10)
+    assert [(m.role, m.content) for m in stored] == [("user", "hi")]
 
 
 def test_max_steps_trace_called_when_step_limit_reached():

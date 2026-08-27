@@ -111,6 +111,57 @@ def test_get_stats_on_empty_store(tmp_path):
     }
 
 
+def test_reopening_store_marks_stale_running_traces_failed(tmp_path):
+    """Regression for final-branch-review finding #2: a trace still RUNNING when the process is killed
+    (container restart) previously stayed RUNNING forever, permanently inflating the dashboard's active
+    count. TraceStore now reconciles any orphaned RUNNING trace to FAILED at startup, since only one bot
+    process ever writes to this file."""
+    db_path = str(tmp_path / "trace.sqlite3")
+    first_process_store = TraceStore(db_path)
+    first_process_store.create_trace(
+        trace_id="orphaned", chat_id=1, conversation_id=1, user_message="hi",
+        status="RUNNING", model="m", started_at=datetime.now(timezone.utc),
+    )
+
+    # Simulate the process restarting and reopening the same database file.
+    second_process_store = TraceStore(db_path)
+
+    trace = second_process_store.get_trace("orphaned")
+    assert trace["status"] == "FAILED"
+    assert trace["error"] == "interrupted: process restarted"
+
+
+def test_reopening_store_does_not_touch_terminal_traces(tmp_path):
+    db_path = str(tmp_path / "trace.sqlite3")
+    store = TraceStore(db_path)
+    store.create_trace(
+        trace_id="done", chat_id=1, conversation_id=1, user_message="hi",
+        status="RUNNING", model="m", started_at=datetime.now(timezone.utc),
+    )
+    store.update_trace_status(
+        trace_id="done", status="COMPLETED", completed_at=datetime.now(timezone.utc),
+        duration_ms=10, agent_steps=1, llm_calls=1, tool_calls=0, error=None,
+    )
+
+    reopened_store = TraceStore(db_path)
+
+    trace = reopened_store.get_trace("done")
+    assert trace["status"] == "COMPLETED"
+    assert trace["error"] is None
+
+
+def test_trace_store_enables_wal_journal_mode(tmp_path):
+    """Regression for final-branch-review finding #5: WAL mode lets dashboard reader threads coexist with
+    the bot's own writer thread (ConversationStore, same file) without lock contention that could break a
+    real Telegram reply."""
+    store = TraceStore(str(tmp_path / "trace.sqlite3"))
+
+    with store._connect() as conn:
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+
+    assert mode.lower() == "wal"
+
+
 def test_get_stats_aggregates_across_traces(tmp_path):
     store = make_store(tmp_path)
     now = datetime.now(timezone.utc)

@@ -162,6 +162,36 @@ def test_max_steps_reached_persists_max_steps_status(tmp_path):
     assert events[-1]["payload"] == {"max_steps": 2}
 
 
+def test_non_inference_exception_persists_failed_trace_and_propagates(tmp_path):
+    """Regression for final-branch-review finding #1: previously only InferenceError was caught around the
+    agent loop, so any other exception (bug, unexpected failure) left the trace row stuck RUNNING forever
+    and leaked tracer sequence state. Now handle_message closes the trace via fail_trace on any exception
+    before re-raising it."""
+    chat_client = FakeChatClient([RuntimeError("boom from nowhere")])
+    loop, store = make_loop(tmp_path, chat_client)
+
+    try:
+        loop.handle_message(chat_id=1, text="hi")
+        assert False, "expected RuntimeError to propagate"
+    except RuntimeError as exc:
+        assert str(exc) == "boom from nowhere"
+
+    trace = store.list_traces()[0]
+    assert trace["status"] == "FAILED"
+    assert trace["error"] == "RuntimeError: boom from nowhere"
+    events = store.get_events(trace["trace_id"])
+    assert events[-1]["event_type"] == "trace_failed"
+
+    # Tracer's internal sequence-tracking state must be cleaned up too, exactly like the InferenceError
+    # path: starting a fresh trace should resume sequence numbering from 0, not carry over.
+    chat_client_2 = FakeChatClient([ChatMessage(role="assistant", content="ok")])
+    loop._chat_client = chat_client_2
+    loop.handle_message(chat_id=1, text="second message")
+    second_trace = next(t for t in store.list_traces() if t["trace_id"] != trace["trace_id"])
+    second_events = store.get_events(second_trace["trace_id"])
+    assert second_events[0]["sequence"] == 0
+
+
 def test_trace_store_failure_does_not_prevent_reply(tmp_path):
     class BoomStore(TraceStore):
         def append_event(self, event):

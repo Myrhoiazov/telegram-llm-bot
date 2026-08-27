@@ -135,6 +135,25 @@ def test_fail_trace_emits_event_and_sets_error(tmp_path):
     assert events[-1]["event_type"] == "trace_failed"
 
 
+def test_fail_trace_redacts_secret_in_persisted_error(tmp_path):
+    """Regression for final-branch-review finding #3: fail_trace previously wrote `error_type: message`
+    straight to the agent_traces.error column unredacted, unlike every other persisted string
+    (user_message, event payloads). This matters once fix #1 starts routing arbitrary str(exc) through
+    this exact path, since exception messages are exactly where secrets leak (e.g. a failed HTTP call
+    embedding a URL with a token)."""
+    tracer, store, _ = make_tracer(tmp_path, secrets=["super-secret"])
+    trace_id = tracer.start_trace(chat_id=1, conversation_id=1, user_message="hi", model="m")
+
+    tracer.fail_trace(
+        trace_id, error_type="HTTPError", message="request to https://x/?token=super-secret failed",
+        duration_ms=10, agent_steps=1, llm_calls=1, tool_calls=0,
+    )
+
+    trace = store.get_trace(trace_id)
+    assert "super-secret" not in trace["error"]
+    assert trace["error"] == "HTTPError: request to https://x/?token=*** failed"
+
+
 def test_max_steps_trace_emits_event_and_sets_status(tmp_path):
     tracer, store, _ = make_tracer(tmp_path)
     trace_id = tracer.start_trace(chat_id=1, conversation_id=1, user_message="hi", model="m")

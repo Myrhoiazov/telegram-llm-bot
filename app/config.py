@@ -33,7 +33,7 @@ class Config:
     email_app_password: str
     trace_enabled: bool = True
     dashboard_enabled: bool = True
-    dashboard_host: str = "0.0.0.0"
+    dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8080
     trace_max_list_limit: int = 100
 
@@ -53,7 +53,7 @@ _DEFAULTS = {
     "EMAIL_IMAP_PORT": "993",
     "TRACE_ENABLED": "true",
     "DASHBOARD_ENABLED": "true",
-    "DASHBOARD_HOST": "0.0.0.0",
+    "DASHBOARD_HOST": "127.0.0.1",
     "DASHBOARD_PORT": "8080",
     "TRACE_MAX_LIST_LIMIT": "100",
 }
@@ -106,6 +106,8 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     dashboard_enabled = _parse_bool(source, "DASHBOARD_ENABLED", _DEFAULTS["DASHBOARD_ENABLED"])
     dashboard_host = source.get("DASHBOARD_HOST", _DEFAULTS["DASHBOARD_HOST"]).strip()
     dashboard_port = _parse_positive_int(source, "DASHBOARD_PORT", _DEFAULTS["DASHBOARD_PORT"])
+    if not 1 <= dashboard_port <= 65535:
+        raise ConfigError(f"DASHBOARD_PORT must be between 1 and 65535, got {dashboard_port}")
     trace_max_list_limit = _parse_positive_int(
         source, "TRACE_MAX_LIST_LIMIT", _DEFAULTS["TRACE_MAX_LIST_LIMIT"]
     )

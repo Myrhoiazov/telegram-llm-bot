@@ -50,6 +50,17 @@ class TraceStore:
         self._db_path = db_path
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            # WAL mode persists on the database file itself, so this also protects
+            # ConversationStore (same file) from reader/writer lock contention.
+            conn.execute("PRAGMA journal_mode=WAL")
+            # Only one bot process ever writes traces to this file, so any trace still
+            # marked RUNNING at startup was orphaned by a prior crash/restart, not a
+            # concurrent writer. Resolve it so the dashboard's "active traces" count
+            # doesn't inflate forever.
+            conn.execute(
+                "UPDATE agent_traces SET status = 'FAILED', "
+                "error = 'interrupted: process restarted' WHERE status = 'RUNNING'"
+            )
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

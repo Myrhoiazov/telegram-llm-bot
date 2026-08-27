@@ -147,7 +147,7 @@ def test_load_config_applies_trace_and_dashboard_defaults():
 
     assert config.trace_enabled is True
     assert config.dashboard_enabled is True
-    assert config.dashboard_host == "0.0.0.0"
+    assert config.dashboard_host == "127.0.0.1"
     assert config.dashboard_port == 8080
     assert config.trace_max_list_limit == 100
 
@@ -176,3 +176,21 @@ def test_load_config_rejects_invalid_boolean():
 
     with pytest.raises(ConfigError):
         load_config(env)
+
+
+def test_load_config_rejects_dashboard_port_above_valid_range():
+    """Regression for final-branch-review finding #6: an out-of-range DASHBOARD_PORT previously passed
+    validation entirely and only failed later inside ThreadingHTTPServer's bind call at startup, crashing
+    the whole bot (not just the dashboard) given main.py had no guard around it either."""
+    env = {"TELEGRAM_BOT_TOKEN": "test-token", "DASHBOARD_PORT": "70000"}
+
+    with pytest.raises(ConfigError):
+        load_config(env)
+
+
+def test_load_config_accepts_dashboard_port_at_upper_bound():
+    env = {"TELEGRAM_BOT_TOKEN": "test-token", "DASHBOARD_PORT": "65535"}
+
+    config = load_config(env)
+
+    assert config.dashboard_port == 65535

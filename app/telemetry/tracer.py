@@ -100,7 +100,8 @@ class AgentTracer:
             payload={"error_type": error_type, "message": message},
         )
         self._finish(
-            trace_id, TRACE_FAILED, duration_ms, agent_steps, llm_calls, tool_calls, error=f"{error_type}: {message}"
+            trace_id, TRACE_FAILED, duration_ms, agent_steps, llm_calls, tool_calls,
+            error=redact_text(f"{error_type}: {message}", self._secrets),
         )
 
     def max_steps_trace(

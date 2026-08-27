@@ -78,11 +78,15 @@ def main() -> None:
 
     dashboard_server = None
     if config.dashboard_enabled and trace_store is not None:
-        dashboard_server = build_dashboard_server(
-            config.dashboard_host, config.dashboard_port, trace_store, broadcaster, config.trace_max_list_limit
-        )
-        threading.Thread(target=dashboard_server.serve_forever, daemon=True).start()
-        logger.info("Dashboard listening on http://%s:%s", config.dashboard_host, config.dashboard_port)
+        try:
+            dashboard_server = build_dashboard_server(
+                config.dashboard_host, config.dashboard_port, trace_store, broadcaster, config.trace_max_list_limit
+            )
+            threading.Thread(target=dashboard_server.serve_forever, daemon=True).start()
+            logger.info("Dashboard listening on http://%s:%s", config.dashboard_host, config.dashboard_port)
+        except OSError:
+            logger.exception("Failed to start dashboard server; continuing without it")
+            dashboard_server = None
 
     try:
         run_polling_loop(telegram_client, bot_service, store, config)

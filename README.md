@@ -224,10 +224,14 @@ harness step and each trace is persisted to the same SQLite database as conversa
 per-trace event timeline, and a live SSE stream of new events; it runs independently of `TRACE_ENABLED` (the
 dashboard starts as long as `DASHBOARD_ENABLED` is on, even with tracing off), but it is only useful when
 `TRACE_ENABLED` is also on — otherwise no events are ever recorded and the trace list just stays empty.
-`DASHBOARD_HOST` (default `0.0.0.0`, i.e. bind all interfaces
-inside the container) and `DASHBOARD_PORT` (default `8080`) configure the dashboard's `ThreadingHTTPServer`;
-`docker-compose.yml` publishes that port to the host bound to `127.0.0.1` only, so the dashboard stays local
-to the machine even though the in-container bind is `0.0.0.0`. `TRACE_MAX_LIST_LIMIT` (default `100`) caps
+`DASHBOARD_HOST` (default `127.0.0.1`, i.e. loopback-only — safe for the bare `python -m app.main` run path)
+and `DASHBOARD_PORT` (default `8080`) configure the dashboard's `ThreadingHTTPServer`. `docker-compose.yml`
+explicitly overrides `DASHBOARD_HOST` to `0.0.0.0` inside the container (`DASHBOARD_HOST: ${DASHBOARD_HOST:-0.0.0.0}`)
+so the dashboard is reachable from the host at all; that is safe only because the container's port is then
+published bound to `127.0.0.1` on the host (`ports: - "127.0.0.1:${DASHBOARD_PORT:-8080}:..."`), which is what
+actually restricts access to the local machine. `.env.example` keeps `DASHBOARD_HOST=0.0.0.0` on purpose: Compose
+interpolates values from `.env` into `docker-compose.yml`, so setting `127.0.0.1` there would make the
+container bind to its own loopback and become unreachable through the host port publish. `TRACE_MAX_LIST_LIMIT` (default `100`) caps
 how many traces the `GET` trace-list endpoint returns per request. See `## Agent Trace Dashboard` above for
 what the dashboard shows and how it redacts secrets.
 

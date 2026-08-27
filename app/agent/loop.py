@@ -89,28 +89,36 @@ class AgentLoop:
 
         tools = [self._tool.schema()]
         counters = _RunCounters()
-        outcome = self._run_steps(trace_id, messages, tools, counters)
-        duration_ms = int((time.monotonic() - start) * 1000)
+        try:
+            outcome = self._run_steps(trace_id, messages, tools, counters)
+            duration_ms = int((time.monotonic() - start) * 1000)
 
-        if outcome.status == TRACE_FAILED:
+            if outcome.status == TRACE_FAILED:
+                self._tracer.fail_trace(
+                    trace_id, outcome.error_type, outcome.error_message, duration_ms,
+                    counters.agent_steps, counters.llm_calls, counters.tool_calls,
+                )
+            elif outcome.status == TRACE_MAX_STEPS_REACHED:
+                self._tracer.max_steps_trace(
+                    trace_id, self._max_steps, duration_ms,
+                    counters.agent_steps, counters.llm_calls, counters.tool_calls,
+                )
+            else:
+                self._tracer.emit(trace_id, EVENT_FINAL_ANSWER, payload={"content": outcome.text})
+                self._tracer.complete_trace(
+                    trace_id, duration_ms, counters.agent_steps, counters.llm_calls, counters.tool_calls
+                )
+
+            if outcome.text not in (FALLBACK_REPLY, MAX_STEPS_REPLY):
+                self._store.append_message(conversation_id, "assistant", outcome.text)
+            return outcome.text
+        except Exception as exc:
+            duration_ms = int((time.monotonic() - start) * 1000)
             self._tracer.fail_trace(
-                trace_id, outcome.error_type, outcome.error_message, duration_ms,
+                trace_id, type(exc).__name__, str(exc), duration_ms,
                 counters.agent_steps, counters.llm_calls, counters.tool_calls,
             )
-        elif outcome.status == TRACE_MAX_STEPS_REACHED:
-            self._tracer.max_steps_trace(
-                trace_id, self._max_steps, duration_ms,
-                counters.agent_steps, counters.llm_calls, counters.tool_calls,
-            )
-        else:
-            self._tracer.emit(trace_id, EVENT_FINAL_ANSWER, payload={"content": outcome.text})
-            self._tracer.complete_trace(
-                trace_id, duration_ms, counters.agent_steps, counters.llm_calls, counters.tool_calls
-            )
-
-        if outcome.text not in (FALLBACK_REPLY, MAX_STEPS_REPLY):
-            self._store.append_message(conversation_id, "assistant", outcome.text)
-        return outcome.text
+            raise
 
     def _run_steps(self, trace_id: str, messages: list[dict], tools: list[dict], counters: _RunCounters) -> _StepOutcome:
         for step in range(1, self._max_steps + 1):

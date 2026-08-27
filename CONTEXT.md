@@ -32,3 +32,26 @@ or policy engine.
 A markdown file under `skills/` that documents either how to use one CLI/API (Type A) or a multi-step routine
 (Type B). Not preloaded into the system prompt — the model discovers and reads skills on demand via the
 `exec` tool itself (`ls skills/`, `cat skills/<name>.md`), so the tool surface stays at exactly one tool.
+
+**Trace**:
+One record of a single Telegram message's full trip through the harness, from `AgentLoop.handle_message` to
+its reply. Lifecycle: `RUNNING` -> `COMPLETED` / `FAILED` / `MAX_STEPS_REACHED`. Created by the Tracer, persisted
+by the Trace Store, viewed in the Dashboard.
+_Avoid_: Run, Request (too generic; Trace is the one bounded, lifecycle-tracked unit).
+
+**Agent Event**:
+A structured, timestamped, sequenced record of one observable harness action within a Trace (e.g. an LLM call
+starting, a tool call completing). Ordered by a per-trace sequence number, not wall-clock time.
+
+**Tracer**:
+The component that creates Traces and emits Agent Events: `AgentTracer` (real implementation) or `NullTracer`
+(no-op used when tracing is disabled). Tolerates its own failures — a broken Tracer must never break message
+handling, so every Tracer method swallows its own exceptions.
+
+**Trace Store**:
+SQLite persistence for Traces and Agent Events (`app/telemetry/store.py`). Separate tables from conversation
+memory, but the same database file as `ConversationStore` (`MEMORY_DB_PATH`).
+
+**Dashboard**:
+The local-only web UI (`app/dashboard/`) for viewing Traces live (via SSE) and historically. Bound to
+`127.0.0.1` by default; not a public API, not a webhook receiver.
