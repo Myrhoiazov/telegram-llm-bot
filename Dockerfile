@@ -12,6 +12,7 @@ RUN apt-get update \
 
 COPY app ./app
 COPY --chown=appuser:appuser skills ./skills
+COPY --chown=appuser:appuser dashboard ./dashboard
 
 RUN mkdir -p /app/data /app/workspace \
     && ln -s /app/skills /app/workspace/skills \

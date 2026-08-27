@@ -19,6 +19,13 @@ services:
       EMAIL_IMAP_PORT: ${EMAIL_IMAP_PORT:-993}
       EMAIL_ADDRESS: ${EMAIL_ADDRESS:-}
       EMAIL_APP_PASSWORD: ${EMAIL_APP_PASSWORD:-}
+      TRACE_ENABLED: ${TRACE_ENABLED:-true}
+      DASHBOARD_ENABLED: ${DASHBOARD_ENABLED:-true}
+      DASHBOARD_HOST: ${DASHBOARD_HOST:-0.0.0.0}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
+      TRACE_MAX_LIST_LIMIT: ${TRACE_MAX_LIST_LIMIT:-100}
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8080}:${DASHBOARD_PORT:-8080}"
     volumes:
       - bot_data:/app/data
     restart: unless-stopped

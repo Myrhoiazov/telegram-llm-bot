@@ -2,16 +2,21 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from app.agent.loop import AgentLoop
 from app.agent.system_prompt import build_system_prompt
 from app.application.bot_service import BotService
 from app.config import Config, ConfigError, load_config
+from app.dashboard.server import build_dashboard_server
 from app.inference.ollama_chat import OllamaChatClient
 from app.memory.store import ConversationStore
 from app.telegram.client import TelegramAPIError, TelegramClient
 from app.telegram.typing_indicator import TypingIndicator
 from app.telegram.updates import parse_updates
+from app.telemetry.broadcaster import EventBroadcaster
+from app.telemetry.store import TraceStore
+from app.telemetry.tracer import AgentTracer, NullTracer
 from app.tools.exec_tool import ExecTool, build_exec_env
 
 logger = logging.getLogger(__name__)
@@ -48,6 +53,17 @@ def main() -> None:
         timeout_seconds=config.exec_timeout_seconds,
         env=build_exec_env(config),
     )
+
+    trace_store = None
+    broadcaster = EventBroadcaster()
+    tracer = NullTracer()
+    if config.trace_enabled or config.dashboard_enabled:
+        trace_store = TraceStore(config.memory_db_path)
+    if config.trace_enabled and trace_store is not None:
+        tracer = AgentTracer(
+            trace_store, broadcaster, secrets=[config.telegram_bot_token, config.email_app_password]
+        )
+
     agent = AgentLoop(
         chat_client=chat_client,
         tool=exec_tool,
@@ -55,13 +71,27 @@ def main() -> None:
         max_steps=config.agent_max_steps,
         max_context_messages=config.max_context_messages,
         system_prompt=build_system_prompt(),
+        model=config.ollama_model,
+        tracer=tracer,
     )
     bot_service = BotService(agent)
+
+    dashboard_server = None
+    if config.dashboard_enabled and trace_store is not None:
+        dashboard_server = build_dashboard_server(
+            config.dashboard_host, config.dashboard_port, trace_store, broadcaster, config.trace_max_list_limit
+        )
+        threading.Thread(target=dashboard_server.serve_forever, daemon=True).start()
+        logger.info("Dashboard listening on http://%s:%s", config.dashboard_host, config.dashboard_port)
 
     try:
         run_polling_loop(telegram_client, bot_service, store, config)
     except KeyboardInterrupt:
         logger.info("Shutting down")
+    finally:
+        if dashboard_server is not None:
+            dashboard_server.shutdown()
+            dashboard_server.server_close()
 
 
 def _is_new_chat_command(text: str) -> bool:
