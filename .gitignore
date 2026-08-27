@@ -65,3 +65,6 @@ Thumbs.db
 # =============================================================================
 docs/specs/
 docs/superpowers/
+docs/adr/
+docs/reviews/
+docs/specifications/
