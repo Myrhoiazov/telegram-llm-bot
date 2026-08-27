@@ -1,5 +1,30 @@
 <!doctype html>
-<html>
-<head><title>Agent Trace Dashboard</title></head>
-<body>Loading dashboard…</body>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agent Trace Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Agent Trace Dashboard</h1>
+    <div class="header-status">
+      <span id="connection-dot" class="dot dot-disconnected"></span>
+      <span id="connection-label">DISCONNECTED</span>
+    </div>
+    <div class="header-stats" id="header-stats"></div>
+    <label class="follow-toggle">
+      <input type="checkbox" id="follow-live" checked />
+      Follow Live
+    </label>
+  </header>
+  <main class="app-body">
+    <section class="trace-list" id="trace-list" aria-label="Traces"></section>
+    <section class="trace-detail" id="trace-detail" aria-label="Selected trace">
+      <p class="empty-state">Select a trace to see its timeline.</p>
+    </section>
+  </main>
+  <footer class="event-detail" id="event-detail"></footer>
+  <script src="/app.js"></script>
+</body>
 </html>
