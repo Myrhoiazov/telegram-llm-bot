@@ -64,6 +64,46 @@ polling.
 - Native Telegram "typing..." indicator while waiting for a reply.
 - Optional `chat_id` allowlist to reject messages from any chat other than the configured one.
 - A factual system prompt instructing the model to say "I don't know" instead of guessing.
+- A live agent trace dashboard (`app/telemetry/`, `app/dashboard/`) at `http://localhost:8080`, showing each
+  message's harness steps as they happen and persisting them for later inspection.
+
+## Agent Trace Dashboard
+
+The bot ships a live, local observability dashboard for the agent loop: every incoming Telegram message
+that reaches `AgentLoop` is recorded as a trace, and every step the harness takes inside that trace (model
+calls, tool calls, the final answer) is recorded as an ordered event, streamed to the browser in real time
+and persisted to SQLite for later inspection.
+
+After `docker compose up -d --build`, open `http://localhost:8080` in a browser. The trace list is empty
+until the bot handles its first message; send the bot any message and a new trace appears and fills in
+live.
+
+One trace is created per incoming Telegram message that is handed to `AgentLoop` (this does not include
+`/new`, which is handled directly in `main.py` and never reaches the agent loop). A trace starts in status
+`RUNNING` and ends in exactly one of `COMPLETED` (the loop produced a final answer), `FAILED` (the loop
+raised an error), or `MAX_STEPS_REACHED` (the loop hit `AGENT_MAX_STEPS` without finishing).
+
+Within a trace, events are emitted in this order (tool events repeat once per tool call):
+
+```text
+trace_started, context_loaded, agent_step_started,
+llm_started, llm_completed,
+tool_requested, tool_started, tool_completed,
+final_answer, trace_completed, trace_failed, max_steps_reached
+```
+
+`skill_accessed` is also emitted, but only when a step actually reads a `skills/<name>/SKILL.md` file via
+`execute_command`.
+
+The dashboard and tracer are controlled by `TRACE_ENABLED`, `DASHBOARD_ENABLED`, `DASHBOARD_HOST`,
+`DASHBOARD_PORT`, and `TRACE_MAX_LIST_LIMIT` — see `## Configuration` below for defaults and details.
+
+`docker-compose.yml` publishes the dashboard port bound to `127.0.0.1` on the host by default, so it is not
+reachable from outside the machine unless that binding is deliberately changed. `TELEGRAM_BOT_TOKEN` and
+`EMAIL_APP_PASSWORD` are redacted to `***` in any event payload before it is persisted or displayed, so they
+can never leak through a traced tool call or model response. The dashboard never shows model
+chain-of-thought — only observable harness events (what step ran, what tool was called, what it returned,
+how long it took).
 
 ## Project Layout
 
@@ -87,6 +127,19 @@ app/
   inference/
     base.py                  # InferenceError, shared inference contract
     ollama_chat.py            # OllamaChatClient, native /api/chat tool-calling
+  telemetry/
+    events.py                # AgentEvent, trace status and event type constants
+    tracer.py                # AgentTracer: emits events, tracks trace start/finish
+    store.py                  # TraceStore: SQLite traces/events, list/read for the dashboard API
+    broadcaster.py            # EventBroadcaster: fans out live events to connected SSE clients
+    redact.py                 # secret redaction applied to event payloads before persist/broadcast
+  dashboard/
+    server.py                # build_dashboard_server(): ThreadingHTTPServer wiring
+    api.py                    # REST endpoints (trace list/detail) + SSE stream handler
+dashboard/
+  index.html                  # dashboard single-page UI
+  app.js                      # trace list, live SSE timeline rendering
+  styles.css                  # dashboard styling
 skills/<name>/SKILL.md         # one folder per skill; the model reads it via execute_command
 tests/                        # pytest test suite
 docs/adr/                      # architecture decision records for the agent harness
@@ -132,6 +185,11 @@ EMAIL_IMAP_HOST=
 EMAIL_IMAP_PORT=993
 EMAIL_ADDRESS=
 EMAIL_APP_PASSWORD=
+TRACE_ENABLED=true
+DASHBOARD_ENABLED=true
+DASHBOARD_HOST=0.0.0.0
+DASHBOARD_PORT=8080
+TRACE_MAX_LIST_LIMIT=100
 ```
 
 `docker-compose.yml` defaults `OLLAMA_BASE_URL` to `http://host.docker.internal:11434` (overridable via
@@ -159,6 +217,17 @@ process's environment. Real isolation is what the exec-runner sidecar described 
 variables have defaults in `app/config.py` and normally do not need to be set: `EXEC_WORKSPACE_DIR`
 (`/app/workspace`, the fixed `cwd` for `execute_command`) and `MEMORY_DB_PATH` (`/app/data/memory.sqlite3`,
 the SQLite conversation store).
+
+`TRACE_ENABLED` (default `true`) turns the agent tracer on: when enabled, `AgentLoop` emits an event per
+harness step and each trace is persisted to the same SQLite database as conversation memory.
+`DASHBOARD_ENABLED` (default `true`) turns on the local web dashboard server that serves the trace list, the
+per-trace event timeline, and a live SSE stream of new events; it requires `TRACE_ENABLED` to also be on,
+since there is nothing to show otherwise. `DASHBOARD_HOST` (default `0.0.0.0`, i.e. bind all interfaces
+inside the container) and `DASHBOARD_PORT` (default `8080`) configure the dashboard's `ThreadingHTTPServer`;
+`docker-compose.yml` publishes that port to the host bound to `127.0.0.1` only, so the dashboard stays local
+to the machine even though the in-container bind is `0.0.0.0`. `TRACE_MAX_LIST_LIMIT` (default `100`) caps
+how many traces the `GET` trace-list endpoint returns per request. See `## Agent Trace Dashboard` above for
+what the dashboard shows and how it redacts secrets.
 
 Never commit a real Telegram token.
 
@@ -257,6 +326,32 @@ Most often this means the requested model is not pulled into the native Ollama i
 ```
 
 Install it with `ollama pull <model-name>` on the host.
+
+### Dashboard shows no traces
+
+The dashboard loads but the trace list stays empty even after sending messages to the bot:
+
+- Check that `TRACE_ENABLED` and `DASHBOARD_ENABLED` are both `true` (or unset — both default to `true`).
+  A trace is only ever created when `TRACE_ENABLED` is on, and the dashboard has nothing to show if it was
+  never on when the message came in.
+- Check the container logs for the startup line confirming the dashboard actually started:
+
+```bash
+docker compose logs telegram-bot | grep "Dashboard listening on"
+```
+
+If that line is missing, the dashboard server never started for this run — recheck the two flags above and
+restart the container.
+
+### Can't reach http://localhost:8080
+
+- Check `DASHBOARD_PORT` in `.env` — if it was changed from the default `8080`, use that port instead.
+- Check the `ports:` publish in `docker-compose.yml` matches the port you're browsing to; it binds to
+  `127.0.0.1` on the host, so the dashboard is reachable at `localhost`/`127.0.0.1` only, never from another
+  machine on the network.
+- Confirm the image was actually rebuilt after pulling in the dashboard code: `docker compose up -d --build
+  telegram-bot`. Recreating the container without `--build` reuses the previously built image and can leave
+  the dashboard server code (or the config change) out entirely — see `CLAUDE.md` for why this matters.
 
 ## Security Notes
 
