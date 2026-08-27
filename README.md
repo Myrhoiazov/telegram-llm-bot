@@ -92,8 +92,8 @@ tool_requested, tool_started, tool_completed,
 final_answer, trace_completed, trace_failed, max_steps_reached
 ```
 
-`skill_accessed` is also emitted, but only when a step actually reads a `skills/<name>/SKILL.md` file via
-`execute_command`.
+`skill_accessed` is defined as a reserved event type for a future skill-read event but is not currently
+emitted anywhere in the running system — no operator-visible event fires for it today.
 
 The dashboard and tracer are controlled by `TRACE_ENABLED`, `DASHBOARD_ENABLED`, `DASHBOARD_HOST`,
 `DASHBOARD_PORT`, and `TRACE_MAX_LIST_LIMIT` — see `## Configuration` below for defaults and details.
@@ -221,8 +221,10 @@ the SQLite conversation store).
 `TRACE_ENABLED` (default `true`) turns the agent tracer on: when enabled, `AgentLoop` emits an event per
 harness step and each trace is persisted to the same SQLite database as conversation memory.
 `DASHBOARD_ENABLED` (default `true`) turns on the local web dashboard server that serves the trace list, the
-per-trace event timeline, and a live SSE stream of new events; it requires `TRACE_ENABLED` to also be on,
-since there is nothing to show otherwise. `DASHBOARD_HOST` (default `0.0.0.0`, i.e. bind all interfaces
+per-trace event timeline, and a live SSE stream of new events; it runs independently of `TRACE_ENABLED` (the
+dashboard starts as long as `DASHBOARD_ENABLED` is on, even with tracing off), but it is only useful when
+`TRACE_ENABLED` is also on — otherwise no events are ever recorded and the trace list just stays empty.
+`DASHBOARD_HOST` (default `0.0.0.0`, i.e. bind all interfaces
 inside the container) and `DASHBOARD_PORT` (default `8080`) configure the dashboard's `ThreadingHTTPServer`;
 `docker-compose.yml` publishes that port to the host bound to `127.0.0.1` only, so the dashboard stays local
 to the machine even though the in-container bind is `0.0.0.0`. `TRACE_MAX_LIST_LIMIT` (default `100`) caps
