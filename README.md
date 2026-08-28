@@ -1,6 +1,6 @@
 # telegram-llm-bot
 
-Version: `0.2.0`
+Version: `0.0.5`
 
 `telegram-llm-bot` is a small educational Python 3.12+ project: a Telegram bot that runs a minimal
 autonomous agent on top of a local LLM through Ollama. It is no longer a stateless one-shot responder — the
