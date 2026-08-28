@@ -1,5 +1,7 @@
 # telegram-llm-bot
 
+Version: `0.2.0`
+
 `telegram-llm-bot` is a small educational Python 3.12+ project: a Telegram bot that runs a minimal
 autonomous agent on top of a local LLM through Ollama. It is no longer a stateless one-shot responder — the
 bot drives a bounded tool-calling loop (the "harness") backed by one universal tool, `execute_command`, and
@@ -53,6 +55,9 @@ polling.
 - Skill files under `skills/<name>/SKILL.md` (Markdown, Type A single-CLI and Type B multi-step), one folder
   per skill, that the model discovers and reads itself via `execute_command` (`ls skills/`,
   `cat skills/<name>/SKILL.md`) rather than a dedicated tool.
+- IMAP email skill under `skills/email/`: the model reads `SKILL.md` and then runs small helper scripts to
+  count unread messages, list decoded headers, or produce a triage JSON payload. The skill reads through
+  `BODY.PEEK`, so checking mail does not mark messages as read.
 - SQLite-backed conversation memory, one active conversation per chat, trimmed to the last
   `MAX_CONTEXT_MESSAGES` messages sent to the model.
 - `/new` command to start a fresh conversation for a chat without deleting prior history.
@@ -141,6 +146,7 @@ dashboard/
   app.js                      # trace list, live SSE timeline rendering
   styles.css                  # dashboard styling
 skills/<name>/SKILL.md         # one folder per skill; the model reads it via execute_command
+skills/email/scripts/           # IMAP helper scripts used by the email skill
 tests/                        # pytest test suite
 docs/adr/                      # architecture decision records for the agent harness
 docs/specifications/           # Spec.md, spec2.md, PROJECT_UNDERSTANDING_RU.md, PROCESS_DIAGRAMS_RU.md
@@ -236,6 +242,27 @@ how many traces the `GET` trace-list endpoint returns per request. See `## Agent
 what the dashboard shows and how it redacts secrets.
 
 Never commit a real Telegram token.
+
+## Email Skill
+
+The email skill is intentionally implemented as a normal skill, not as a pre-model router. A mail-related
+Telegram message still goes through the LLM first; the model should decide to call `execute_command`, read
+`skills/email/SKILL.md`, and run the appropriate helper script:
+
+```bash
+python3 skills/email/scripts/count_unread.py
+python3 skills/email/scripts/list_unread_headers.py
+python3 skills/email/scripts/triage_unread.py
+```
+
+The helper scripts use Python's standard `imaplib`/`email` libraries and the `EMAIL_*` environment variables
+allowlisted by `build_exec_env()`. `list_unread_headers.py` decodes folded MIME headers so user-facing
+responses show readable senders and subjects instead of raw strings like `=?UTF-8?...?=`.
+
+Current email boundaries:
+
+- available: count unread messages, list unread senders/subjects/dates, read short snippets for triage;
+- unavailable: send mail, create Gmail drafts, or reliably change Gmail labels such as `SPAM`/`UNREAD`.
 
 ## Quick Start
 
@@ -358,6 +385,18 @@ restart the container.
 - Confirm the image was actually rebuilt after pulling in the dashboard code: `docker compose up -d --build
   telegram-bot`. Recreating the container without `--build` reuses the previously built image and can leave
   the dashboard server code (or the config change) out entirely — see `CLAUDE.md` for why this matters.
+
+### Email output shows raw `=?UTF-8?...?=` headers
+
+The bot is probably running an old image or the model copied an old inline command. Rebuild the image and
+ask the bot again:
+
+```bash
+docker compose up -d --build
+```
+
+The current email skill points the model to `python3 skills/email/scripts/list_unread_headers.py`, which
+decodes MIME headers before they reach the final Telegram reply.
 
 ## Security Notes
 
