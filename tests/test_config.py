@@ -68,6 +68,12 @@ def test_load_config_applies_defaults_when_optional_vars_missing():
     assert config.email_imap_port == 993
     assert config.email_address == ""
     assert config.email_app_password == ""
+    assert config.stt_enabled is True
+    assert config.stt_provider == "lemonade"
+    assert config.stt_base_url == "http://host.docker.internal:13305"
+    assert config.stt_model == "Whisper-Base"
+    assert config.stt_timeout_seconds == 60
+    assert config.voice_max_duration_seconds == 60
 
 
 def test_load_config_allowed_chat_id_invalid_raises():
@@ -169,6 +175,50 @@ def test_load_config_reads_trace_and_dashboard_overrides():
     assert config.dashboard_host == "127.0.0.1"
     assert config.dashboard_port == 9090
     assert config.trace_max_list_limit == 250
+
+
+def test_load_config_reads_stt_overrides():
+    env = {
+        "TELEGRAM_BOT_TOKEN": "test-token",
+        "STT_ENABLED": "false",
+        "STT_PROVIDER": "lemonade",
+        "STT_BASE_URL": "http://localhost:13305/",
+        "STT_MODEL": "Whisper-Small",
+        "STT_TIMEOUT_SECONDS": "45",
+        "VOICE_MAX_DURATION_SECONDS": "30",
+    }
+
+    config = load_config(env)
+
+    assert config.stt_enabled is False
+    assert config.stt_provider == "lemonade"
+    assert config.stt_base_url == "http://localhost:13305"
+    assert config.stt_model == "Whisper-Small"
+    assert config.stt_timeout_seconds == 45
+    assert config.voice_max_duration_seconds == 30
+
+
+def test_load_config_rejects_unsupported_stt_provider():
+    env = {"TELEGRAM_BOT_TOKEN": "test-token", "STT_PROVIDER": "ollama"}
+
+    with pytest.raises(ConfigError):
+        load_config(env)
+
+
+def test_load_config_requires_stt_base_url_when_stt_enabled():
+    env = {"TELEGRAM_BOT_TOKEN": "test-token", "STT_BASE_URL": " "}
+
+    with pytest.raises(ConfigError):
+        load_config(env)
+
+
+def test_load_config_allows_empty_stt_base_url_when_stt_disabled():
+    env = {"TELEGRAM_BOT_TOKEN": "test-token", "STT_ENABLED": "false", "STT_BASE_URL": " "}
+
+    config = load_config(env)
+
+    assert config.stt_enabled is False
+    assert config.stt_base_url == ""
 
 
 def test_load_config_rejects_invalid_boolean():

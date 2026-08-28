@@ -36,6 +36,12 @@ class Config:
     dashboard_host: str = "127.0.0.1"
     dashboard_port: int = 8080
     trace_max_list_limit: int = 100
+    stt_enabled: bool = True
+    stt_provider: str = "lemonade"
+    stt_base_url: str = "http://host.docker.internal:13305"
+    stt_model: str = "Whisper-Base"
+    stt_timeout_seconds: int = 60
+    voice_max_duration_seconds: int = 60
 
 
 _DEFAULTS = {
@@ -56,6 +62,12 @@ _DEFAULTS = {
     "DASHBOARD_HOST": "127.0.0.1",
     "DASHBOARD_PORT": "8080",
     "TRACE_MAX_LIST_LIMIT": "100",
+    "STT_ENABLED": "true",
+    "STT_PROVIDER": "lemonade",
+    "STT_BASE_URL": "http://host.docker.internal:13305",
+    "STT_MODEL": "Whisper-Base",
+    "STT_TIMEOUT_SECONDS": "60",
+    "VOICE_MAX_DURATION_SECONDS": "60",
 }
 
 
@@ -111,6 +123,22 @@ def load_config(env: dict[str, str] | None = None) -> Config:
     trace_max_list_limit = _parse_positive_int(
         source, "TRACE_MAX_LIST_LIMIT", _DEFAULTS["TRACE_MAX_LIST_LIMIT"]
     )
+    stt_enabled = _parse_bool(source, "STT_ENABLED", _DEFAULTS["STT_ENABLED"])
+    stt_provider = source.get("STT_PROVIDER", _DEFAULTS["STT_PROVIDER"]).strip()
+    if stt_provider != "lemonade":
+        raise ConfigError(f"STT_PROVIDER must be 'lemonade', got {stt_provider!r}")
+    stt_base_url = source.get("STT_BASE_URL", _DEFAULTS["STT_BASE_URL"]).strip()
+    if stt_enabled and not stt_base_url:
+        raise ConfigError("STT_BASE_URL must not be empty when STT_ENABLED=true")
+    stt_model = source.get("STT_MODEL", _DEFAULTS["STT_MODEL"]).strip()
+    if stt_enabled and not stt_model:
+        raise ConfigError("STT_MODEL must not be empty when STT_ENABLED=true")
+    stt_timeout_seconds = _parse_positive_int(
+        source, "STT_TIMEOUT_SECONDS", _DEFAULTS["STT_TIMEOUT_SECONDS"]
+    )
+    voice_max_duration_seconds = _parse_positive_int(
+        source, "VOICE_MAX_DURATION_SECONDS", _DEFAULTS["VOICE_MAX_DURATION_SECONDS"]
+    )
 
     return Config(
         telegram_bot_token=token,
@@ -135,6 +163,12 @@ def load_config(env: dict[str, str] | None = None) -> Config:
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
         trace_max_list_limit=trace_max_list_limit,
+        stt_enabled=stt_enabled,
+        stt_provider=stt_provider,
+        stt_base_url=stt_base_url.rstrip("/"),
+        stt_model=stt_model,
+        stt_timeout_seconds=stt_timeout_seconds,
+        voice_max_duration_seconds=voice_max_duration_seconds,
     )
 
 

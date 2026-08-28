@@ -51,3 +51,26 @@ def test_recent_messages_respects_limit_keeping_most_recent():
     result = store.recent_messages(conversation_id, limit=2)
 
     assert [m.content for m in result] == ["msg3", "msg4"]
+
+
+def test_chat_input_mode_defaults_to_text():
+    store = make_store()
+
+    assert store.chat_input_mode(chat_id=555) == "text"
+
+
+def test_chat_input_mode_roundtrips():
+    store = make_store()
+
+    store.set_chat_input_mode(chat_id=555, input_mode="voice")
+
+    assert store.chat_input_mode(chat_id=555) == "voice"
+
+
+def test_start_new_conversation_resets_chat_input_mode_to_text():
+    store = make_store()
+    store.set_chat_input_mode(chat_id=555, input_mode="voice")
+
+    store.start_new_conversation(chat_id=555)
+
+    assert store.chat_input_mode(chat_id=555) == "text"

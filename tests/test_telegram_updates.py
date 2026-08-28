@@ -1,4 +1,4 @@
-from app.telegram.updates import TextMessage, parse_updates
+from app.telegram.updates import CallbackQuery, TextMessage, VoiceMessage, parse_updates
 
 
 def test_parse_updates_extracts_text_message():
@@ -31,6 +31,88 @@ def test_parse_updates_ignores_message_without_text():
                     "message_id": 2,
                     "chat": {"id": 555},
                     "photo": [{"file_id": "abc"}],
+                },
+            }
+        ],
+    }
+
+    assert parse_updates(payload) == []
+
+
+def test_parse_updates_extracts_voice_message():
+    payload = {
+        "ok": True,
+        "result": [
+            {
+                "update_id": 104,
+                "message": {
+                    "message_id": 3,
+                    "chat": {"id": 555},
+                    "voice": {
+                        "file_id": "voice-file-id",
+                        "file_unique_id": "voice-unique-id",
+                        "duration": 12,
+                        "mime_type": "audio/ogg",
+                    },
+                },
+            }
+        ],
+    }
+
+    messages = parse_updates(payload)
+
+    assert messages == [
+        VoiceMessage(
+            update_id=104,
+            chat_id=555,
+            file_id="voice-file-id",
+            file_unique_id="voice-unique-id",
+            duration=12,
+            mime_type="audio/ogg",
+        )
+    ]
+
+
+def test_parse_updates_extracts_mode_callback_query():
+    payload = {
+        "ok": True,
+        "result": [
+            {
+                "update_id": 105,
+                "callback_query": {
+                    "id": "callback-1",
+                    "data": "mode:voice",
+                    "message": {
+                        "message_id": 4,
+                        "chat": {"id": 555},
+                    },
+                },
+            }
+        ],
+    }
+
+    messages = parse_updates(payload)
+
+    assert messages == [
+        CallbackQuery(
+            update_id=105,
+            callback_query_id="callback-1",
+            chat_id=555,
+            data="mode:voice",
+        )
+    ]
+
+
+def test_parse_updates_ignores_callback_without_supported_mode_data():
+    payload = {
+        "ok": True,
+        "result": [
+            {
+                "update_id": 106,
+                "callback_query": {
+                    "id": "callback-2",
+                    "data": "unknown",
+                    "message": {"chat": {"id": 555}},
                 },
             }
         ],

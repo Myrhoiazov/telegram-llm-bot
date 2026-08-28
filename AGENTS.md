@@ -8,6 +8,9 @@ This repository is an educational Telegram LLM bot. Preserve its core architectu
 - Skills live under `skills/<name>/SKILL.md`; the model discovers and reads them through
   `execute_command` (`ls skills/`, then `cat skills/<name>/SKILL.md`).
 - Keep tool execution inside the existing `ExecTool` boundary unless a dedicated ADR/spec says otherwise.
+- Telegram voice messages are preprocessed into text before `BotService`; they are not a second agent mode.
+- Inline buttons are UI controls only: `New` starts a fresh conversation and resets input mode to text,
+  while `Voice` stores voice input mode for the chat.
 
 ## Email Skill
 
@@ -28,5 +31,7 @@ The email skill is IMAP-based, not Gmail API based. It uses environment variable
 - Run the relevant pytest subset before reporting completion.
 - Rebuild the Docker image after changing `app/`, `dashboard/`, or `skills/`, because these files are copied
   into the image rather than bind-mounted.
+- Rebuild the Docker image after changing voice support: `ffmpeg` is installed in the image and Lemonade
+  stays outside Docker, reachable through `STT_BASE_URL`.
 - Never commit real secrets from `.env`.
 - Do not add AI attribution trailers to commits.

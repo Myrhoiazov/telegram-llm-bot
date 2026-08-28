@@ -1,6 +1,6 @@
 # telegram-llm-bot
 
-Version: `0.0.5`
+Version: `0.0.6`
 
 `telegram-llm-bot` is a small educational Python 3.12+ project: a Telegram bot that runs a minimal
 autonomous agent on top of a local LLM through Ollama. It is no longer a stateless one-shot responder — the
@@ -11,10 +11,11 @@ why the tool is named `execute_command` rather than `exec` and why the sandbox i
 rather than a separate Docker sidecar today.
 
 ```text
-User Message -> Telegram Bot API -> BotService -> AgentLoop -> Ollama (native tool-calling) -> Bot Reply
-                                                       |
-                                                       +--> execute_command (subprocess in the bot container)
-                                                       +--> SQLite conversation memory
+Text Message  -> Telegram Bot API -------------------------> BotService -> AgentLoop -> Ollama -> Bot Reply
+Voice Message -> Telegram Bot API -> VoiceProcessor -> STT -^
+                                                           |
+                                                           +--> execute_command (subprocess in the bot container)
+                                                           +--> SQLite conversation memory
 ```
 
 No Kubernetes, managed database, Redis, vector database, queue, webhook receiver, or separate Agent Service
@@ -45,7 +46,7 @@ polling.
 
 - Direct Telegram Bot API integration over HTTP.
 - Long polling with `getUpdates`.
-- Replies with `sendMessage`.
+- Replies with `sendMessage` and inline `New | Voice` controls.
 - In-memory Telegram update offset during process runtime.
 - A bounded agent loop (`app/agent/loop.py`) that calls the model, dispatches any tool calls it requests,
   and feeds results back until a final answer or a max-steps guard trips.
@@ -61,6 +62,9 @@ polling.
 - SQLite-backed conversation memory, one active conversation per chat, trimmed to the last
   `MAX_CONTEXT_MESSAGES` messages sent to the model.
 - `/new` command to start a fresh conversation for a chat without deleting prior history.
+- Telegram voice-message input through a local Lemonade/Whisper STT server: the bot downloads Telegram
+  voice files, converts OGG/Opus to 16 kHz mono WAV with `ffmpeg`, transcribes locally, and sends the
+  resulting text through the same `BotService -> AgentLoop` path as typed messages.
 - Docker Compose for `telegram-bot`; `ollama` runs as a native host process, not a Compose service (see
   `CLAUDE.md` for why).
 - Environment-based configuration.
@@ -122,6 +126,9 @@ app/
     typing_indicator.py      # background "typing..." chat action while waiting for a reply
   application/
     bot_service.py           # thin Telegram-agnostic entry point delegating to the agent loop
+    voice.py                 # voice preprocessing: temp files, ffmpeg conversion, STT handoff
+  stt/
+    lemonade.py              # Lemonade OpenAI-compatible speech-to-text client
   agent/
     loop.py                  # AgentLoop: bounded tool-calling harness
     system_prompt.py         # response rules + tool + skill-discovery guidance
@@ -196,6 +203,12 @@ DASHBOARD_ENABLED=true
 DASHBOARD_HOST=0.0.0.0
 DASHBOARD_PORT=8080
 TRACE_MAX_LIST_LIMIT=100
+STT_ENABLED=true
+STT_PROVIDER=lemonade
+STT_BASE_URL=http://host.docker.internal:13305
+STT_MODEL=Whisper-Base
+STT_TIMEOUT_SECONDS=60
+VOICE_MAX_DURATION_SECONDS=60
 ```
 
 `docker-compose.yml` defaults `OLLAMA_BASE_URL` to `http://host.docker.internal:11434` (overridable via
@@ -219,10 +232,17 @@ an innocuous-looking model-issued command (e.g. plain `env`) will not accidental
 or other secrets it has no reason to need. This allowlist is a hygiene measure against accidental exposure,
 not a hard security boundary: `execute_command` still runs inside the same container/process as the bot
 rather than a separate sandboxed process, so a sufficiently deliberate command could still reach the parent
-process's environment. Real isolation is what the exec-runner sidecar described below is for. Two more
-variables have defaults in `app/config.py` and normally do not need to be set: `EXEC_WORKSPACE_DIR`
+process's environment. Real isolation is what the exec-runner sidecar described below is for. Two internal
+path variables have defaults in `app/config.py` and normally do not need to be set: `EXEC_WORKSPACE_DIR`
 (`/app/workspace`, the fixed `cwd` for `execute_command`) and `MEMORY_DB_PATH` (`/app/data/memory.sqlite3`,
 the SQLite conversation store).
+
+`STT_ENABLED` (default `true`) controls Telegram voice-message transcription. The v1 provider is Lemonade
+only (`STT_PROVIDER=lemonade`). `STT_BASE_URL` should point at a local Lemonade server reachable from the
+bot container, usually `http://host.docker.internal:13305`; `STT_MODEL` defaults to `Whisper-Base`.
+`STT_TIMEOUT_SECONDS` is the Lemonade request timeout, and `VOICE_MAX_DURATION_SECONDS` rejects long voice
+messages before downloading them from Telegram. When STT is disabled or unavailable, the bot asks the user
+to send text instead; it never stores raw audio files permanently.
 
 `TRACE_ENABLED` (default `true`) turns the agent tracer on: when enabled, `AgentLoop` emits an event per
 harness step and each trace is persisted to the same SQLite database as conversation memory.
@@ -264,6 +284,18 @@ Current email boundaries:
 - available: count unread messages, list unread senders/subjects/dates, read short snippets for triage;
 - unavailable: send mail, create Gmail drafts, or reliably change Gmail labels such as `SPAM`/`UNREAD`.
 
+## Voice Messages
+
+Voice support is preprocessing, not a second agent. Telegram voice messages are downloaded with
+`getFile`/the file API, converted from OGG/Opus to 16 kHz mono WAV by `ffmpeg`, transcribed through Lemonade,
+and then passed into the same `BotService -> AgentLoop` path as typed text.
+
+The bot sends every reply with inline `New | Voice` controls. `New` starts a fresh conversation and resets
+the chat input mode to text. `Voice` records voice mode for that chat when STT is enabled.
+
+Lemonade is expected to run locally on the host, outside Docker, and the container reaches it through
+`STT_BASE_URL`, usually `http://host.docker.internal:13305`.
+
 ## Quick Start
 
 Make sure Ollama is running natively on the host — start `Ollama.app` on macOS, or run `ollama serve` — then
@@ -278,6 +310,14 @@ Check that the model is installed:
 ```bash
 ollama list
 ```
+
+For voice messages, start Lemonade locally and pull the configured Whisper model:
+
+```bash
+lemonade pull Whisper-Base
+```
+
+Make sure Lemonade's OpenAI-compatible API is reachable at `STT_BASE_URL` before sending voice messages.
 
 Start the bot:
 
@@ -397,6 +437,22 @@ docker compose up -d --build
 
 The current email skill points the model to `python3 skills/email/scripts/list_unread_headers.py`, which
 decodes MIME headers before they reach the final Telegram reply.
+
+### Voice messages are not transcribed
+
+Check `STT_ENABLED`, `STT_BASE_URL`, and `STT_MODEL` in `.env`, then confirm Lemonade is running locally and
+has the configured Whisper model:
+
+```bash
+lemonade pull Whisper-Base
+```
+
+If the bot logs show an `ffmpeg` conversion error, rebuild the image so the container includes the new
+system dependency:
+
+```bash
+docker compose up -d --build
+```
 
 ## Security Notes
 

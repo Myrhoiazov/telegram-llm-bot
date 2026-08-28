@@ -18,3 +18,10 @@ def test_system_prompt_preserves_model_decision_making():
 
     assert "самостоятельно решай" in normalized
     assert "пользовательский запрос сначала получает модель" in normalized
+
+
+def test_system_prompt_allows_user_to_request_another_language():
+    prompt = build_system_prompt()
+    normalized = prompt.casefold()
+
+    assert "если пользователь явно не попросил другой язык" in normalized

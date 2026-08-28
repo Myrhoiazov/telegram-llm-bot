@@ -40,6 +40,15 @@ class ConversationStore:
             )
             """
         )
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chat_settings (
+                chat_id INTEGER PRIMARY KEY,
+                input_mode TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
         self._connection.commit()
 
     def active_conversation_id(self, chat_id: int) -> int:
@@ -55,6 +64,7 @@ class ConversationStore:
         cursor = self._connection.execute(
             "INSERT INTO conversations (chat_id) VALUES (?)", (chat_id,)
         )
+        self.set_chat_input_mode(chat_id, "text", commit=False)
         self._connection.commit()
         return cursor.lastrowid
 
@@ -75,3 +85,28 @@ class ConversationStore:
             (conversation_id, limit),
         ).fetchall()
         return [StoredMessage(role=role, content=content) for role, content in reversed(rows)]
+
+    def chat_input_mode(self, chat_id: int) -> str:
+        row = self._connection.execute(
+            "SELECT input_mode FROM chat_settings WHERE chat_id = ?",
+            (chat_id,),
+        ).fetchone()
+        if row is None:
+            return "text"
+        return row[0]
+
+    def set_chat_input_mode(self, chat_id: int, input_mode: str, commit: bool = True) -> None:
+        if input_mode not in {"text", "voice"}:
+            raise ValueError(f"unsupported input_mode: {input_mode}")
+        self._connection.execute(
+            """
+            INSERT INTO chat_settings (chat_id, input_mode, updated_at)
+            VALUES (?, ?, datetime('now'))
+            ON CONFLICT(chat_id) DO UPDATE SET
+                input_mode = excluded.input_mode,
+                updated_at = excluded.updated_at
+            """,
+            (chat_id, input_mode),
+        )
+        if commit:
+            self._connection.commit()
